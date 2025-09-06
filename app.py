@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from client.postgres_client import PostgresClient
 
 load_dotenv()
 from client.gmail_client import GmailClient
@@ -51,8 +52,8 @@ if __name__ == "__main__":
     # response = openai_client.chat("Hello, how are you?")
     # print(response)
 
-    telegram = TelegramClient(os.getenv("TELEGRAM_BOT_TOKEN"))
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    # telegram = TelegramClient(os.getenv("TELEGRAM_BOT_TOKEN"))
+    # chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     # Send simple message
     # result = telegram.send_message(
@@ -77,26 +78,26 @@ if __name__ == "__main__":
     # print(result)
 
     # Example 1: Food preferences with custom option
-    food_options = [
-        "🍕 Pizza",
-        "🍔 Burger",
-        "🥗 Salad",
-        "🍜 Ramen",
-        "🍰 Cake",
-        "🍦 Ice Cream",
-        "🌮 Tacos",
-        "🍣 Sushi",
-    ]
-
-    result = telegram.wait_for_selection_or_custom_input(
-        chat_id=chat_id,
-        message="What's your favorite food?",
-        predefined_options=food_options,
-        timeout_minutes=1,
-        buttons_per_row=4,
-    )
-
-    print(result)
+    # food_options = [
+    #     "🍕 Pizza",
+    #     "🍔 Burger",
+    #     "🥗 Salad",
+    #     "🍜 Ramen",
+    #     "🍰 Cake",
+    #     "🍦 Ice Cream",
+    #     "🌮 Tacos",
+    #     "🍣 Sushi",
+    # ]
+    #
+    # result = telegram.wait_for_selection_or_custom_input(
+    #     chat_id=chat_id,
+    #     message="What's your favorite food?",
+    #     predefined_options=food_options,
+    #     timeout_minutes=1,
+    #     buttons_per_row=4,
+    # )
+    #
+    # print(result)
 
     # if result:
     #     if result["type"] == "predefined":
@@ -112,3 +113,60 @@ if __name__ == "__main__":
     #     print(f"User response: {result}")
     # else:
     #     print("No response or timeout")
+    # Method 1: Direct instantiation (singleton)
+    pg1 = PostgresClient(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+
+    # Method 2: Another instance - same object
+    pg2 = PostgresClient()  # No need to pass params again
+
+    # Method 3: Using class method
+    pg3 = PostgresClient.get_instance()
+
+    # Verify they're all the same instance
+    print(f"pg1 is pg2: {pg1 is pg2}")  # True
+    print(f"pg2 is pg3: {pg2 is pg3}")  # True
+    print(f"All same instance: {pg1 is pg2 is pg3}")  # True
+
+    # Create table for testing
+    pg1.execute_query(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(150) UNIQUE,
+            age INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """
+    )
+
+    # Insert using first instance
+    pg1.insert_or_update(
+        "users", {"name": "Alice Johnson", "email": "alice@example.com", "age": 30}
+    )
+
+    # Query using second instance (same connection)
+    users = pg2.execute_query("SELECT * FROM users")
+    print("Users from pg2:", users)
+
+    # Update using third instance (same connection)
+    pg3.insert_or_update(
+        "users",
+        {"name": "Alice Updated", "email": "alice@example.com", "age": 31},
+        update_column="email",
+    )
+
+    # Verify update worked
+    updated_user = pg1.execute_query(
+        "SELECT * FROM users WHERE email = %s", ("alice@example.com",)
+    )
+    print("Updated user:", updated_user)
+
+    # Close connection (affects all instances since it's the same connection)
+    pg1.close()
