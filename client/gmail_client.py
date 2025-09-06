@@ -2,6 +2,7 @@ import base64
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 class GmailClient:
@@ -19,6 +20,26 @@ class GmailClient:
 
         self.service = build("gmail", "v1", credentials=creds)
         self.new_token = creds.token
+
+    def mark_message_as_read(self, message_id):
+        """
+        Mark a specific Gmail message as read by removing the UNREAD label.
+
+        Args:
+            message_id (str): The ID of the message to mark as read
+
+        Returns:
+            bool: True if successful, False if an error occurred
+        """
+        try:
+            # Remove the "UNREAD" label from the message
+            self.service.users().messages().modify(
+                userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+            ).execute()
+            return True
+        except HttpError as error:
+            print(f"An error occurred: {error}")
+            return False
 
     def get_emails(self, query="", count=10):
         """Get emails with search query and decoded body content"""
