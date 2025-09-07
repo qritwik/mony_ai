@@ -1,0 +1,41 @@
+<html>
+    <head>
+        <title>Register Page</title>
+    </head>
+    <body>
+        <h1>Register!</h1>
+        <form method="POST">
+            <!-- Text Input -->
+            <label>Full name:</label>
+            <input type="text" name="name" placeholder="Enter full name"><br><br>
+
+            <!-- Text Input -->
+            <label>Username:</label>
+            <input type="text" name="username" placeholder="Enter username"><br><br>
+
+            <!-- Password -->
+            <label>Password:</label>
+            <input type="password" name="password"><br><br>
+
+            <!-- Confirm Password -->
+            <label>Confirm Password:</label>
+            <input type="password" name="confirm_password"><br><br>
+
+            <!-- Phone -->
+            <label>Phone:</label>
+            <input type="number" name="phone" placeholder="Enter phone"><br><br>
+
+            <!-- Submit Button -->
+            <input type="submit" value="Submit">
+
+            </br>
+            </br>
+
+            <a href="/login">Already registered, click Login</a>
+        </form>
+
+        {% if message %}
+            <p style="color:blue;">{{ message }}</p>
+        {% endif %}
+    </body>
+</html>

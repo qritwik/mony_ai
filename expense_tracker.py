@@ -2,6 +2,7 @@ import os
 from client.gmail_client import GmailClient
 from client.openai_client import OpenAIClient
 from client.telegram_client import TelegramClient
+from client.postgres_client import PostgresClient
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -167,6 +168,24 @@ def send_telegram_message(transaction_message):
     )
 
     return result
+
+
+def insert_to_db():
+    pg_client = PostgresClient(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+
+    pg_client.insert_or_update(
+        "users",
+        {"name": "Alice Updated", "email": "alice@example.com", "age": 31},
+        update_column="email",
+    )
+
+    pg_client.close()
 
 
 if __name__ == "__main__":

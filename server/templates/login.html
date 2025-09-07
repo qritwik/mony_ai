@@ -1,0 +1,28 @@
+<html>
+<head>
+    <title>Login Page</title>
+</head>
+<body>
+<h1>Login Here!</h1>
+<form method="POST">
+    <!-- Text Input -->
+    <label>Username:</label>
+    <input type="text" name="username" placeholder="Enter username"><br><br>
+
+    <!-- Password -->
+    <label>Password:</label>
+    <input type="password" name="password"><br><br>
+
+    <!-- Submit Button -->
+    <input type="submit" value="Submit">
+
+    </br>
+    </br>
+
+    <a href="/register">New user, click Register</a>
+</form>
+    {% if message %}
+        <p style="color:blue;">{{ message }}</p>
+    {% endif %}
+</body>
+</html>
