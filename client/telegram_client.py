@@ -89,7 +89,13 @@ class TelegramClient:
         return {"remove_keyboard": True}
 
     def wait_for_selection_or_custom_input(
-        self, chat_id, message, predefined_options, timeout_minutes=5, buttons_per_row=2
+        self,
+        chat_id,
+        message,
+        predefined_options,
+        parse_mode=None,
+        timeout_minutes=5,
+        buttons_per_row=2,
     ):
         """
         Handle both reply button selections AND custom text input
@@ -100,10 +106,10 @@ class TelegramClient:
             predefined_options, buttons_per_row
         )
 
-        prompt_text = (
-            f"{message}\n\n💡 Choose from buttons below OR type your own answer:"
+        prompt_text = f"{message}\n\nChoose from buttons below OR type your own answer:"
+        sent = self.send_message(
+            chat_id, prompt_text, parse_mode=parse_mode, reply_markup=keyboard
         )
-        sent = self.send_message(chat_id, prompt_text, reply_markup=keyboard)
         if not sent:
             return None
 

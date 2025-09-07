@@ -1,4 +1,5 @@
 import openai
+import json
 
 
 class OpenAIClient:
@@ -11,8 +12,12 @@ class OpenAIClient:
         system_message=None,
         assistant_message=None,
         model="gpt-4o-mini",
+        structured_output=False,
     ):
-        """Send chat message to OpenAI and get response"""
+        """
+        Send chat message to OpenAI and get response.
+        If structured_output=True, returns valid JSON.
+        """
         messages = []
 
         # Add system message if provided
@@ -26,7 +31,23 @@ class OpenAIClient:
         if assistant_message:
             messages.append({"role": "assistant", "content": assistant_message})
 
-        # Call OpenAI API
-        response = self.client.chat.completions.create(model=model, messages=messages)
+        # Response format
+        response_format = {"type": "json_object"} if structured_output else None
 
-        return response.choices[0].message.content
+        # Call OpenAI API
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format=response_format,
+        )
+
+        content = response.choices[0].message.content
+
+        # If structured output, parse JSON before returning
+        if structured_output:
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                raise ValueError(f"Invalid JSON returned: {content}")
+
+        return content
