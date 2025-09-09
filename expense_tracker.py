@@ -189,7 +189,7 @@ def insert_to_db():
 
 
 if __name__ == "__main__":
-    out1 = read_gmail(query="is:unread in:inbox newer_than:7d from:qritwik@gmail.com")
+    out1 = read_gmail(query="is:unread in:inbox newer_than:7d from:alerts@hdfcbank.net")
     out2 = llm_extract_fields(gmail_data=out1)
     out3 = llm_chat_summarizer(transaction_detail=out2)
     out4 = send_telegram_message(transaction_message=out3)
