@@ -78,9 +78,9 @@ class UserDB:
                 cursor.execute(
                     """
                     SELECT * FROM gmail_credentials 
-                    WHERE gmail_email = %s
+                    WHERE gmail_email = %s and status = %s
                 """,
-                    (email,),
+                    (email, "active"),
                 )
                 row = cursor.fetchone()
                 return dict(row) if row else None
