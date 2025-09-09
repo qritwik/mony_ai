@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 import psycopg2.extras
 from typing import Optional, Dict, List
 
+load_dotenv()
+
 
 class UserDB:
     def __init__(self):
@@ -47,9 +49,64 @@ class UserDB:
                 cursor.execute(
                     """
                     SELECT * FROM users 
-                    WHERE username = %s AND password = %s
+                    WHERE username = %s AND password = %s AND status = 'active'
                 """,
                     (username, password),
                 )
                 row = cursor.fetchone()
                 return dict(row) if row else None
+
+    def get_user_gmail(self, user_id: int) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM gmail_credentials 
+                    WHERE user_id = %s and status = %s
+                """,
+                    (
+                        user_id,
+                        "active",
+                    ),
+                )
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+    def get_gmail_credential_by_email(self, email) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM gmail_credentials 
+                    WHERE gmail_email = %s
+                """,
+                    (email,),
+                )
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+    def create_gmail_credential(self, user_id, email, access_token, refresh_token):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO gmail_credentials (user_id, gmail_email, access_token, refresh_token)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (user_id, email, access_token, refresh_token),
+                    )
+                conn.commit()
+                return True
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            raise
+
+
+# if __name__ == "__main__":
+#     db = UserDB()
+#     gmail = db.get_user_gmail(user_id=1)
+#     print(gmail)
+#
+#     user = db.authenticate_user("qritwik", "123456")
+#     print(user)

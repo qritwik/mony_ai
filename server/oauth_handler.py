@@ -41,9 +41,10 @@ class GoogleOAuth:
     def get_user_email(self, access_token: str) -> str:
         """Get user email from access token"""
         response = requests.get(
-            "https://www.googleapis.com/oauth2/v1/userinfo",
+            "https://www.googleapis.com/gmail/v1/users/me/profile",
             headers={"Authorization": f"Bearer {access_token}"},
         )
         if response.status_code != 200:
-            raise Exception(f"Failed to get user info: {response.text}")
-        return response.json().get("email")
+            raise Exception(f"Failed to get Gmail profile: {response.text}")
+        email = response.json().get("emailAddress")
+        return email

@@ -3,11 +3,31 @@
     <title>Mony Dashboard</title>
 </head>
 <body>
+    <!-- Display flashed messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul>
+          {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
     <h2>Hello {{ username }}!</h2>
+    <h3>User ID: {{ user_id }}</h3>
     <p>Welcome to Mony AI Dashboard!</p>
 
     </br>
     </br>
+
+    {% if user_gmail %}
+        <p>Gmail connected: {{ user_gmail.gmail_email }}</p>
+    {% else %}
+        <p>Gmail not connected!</p>
+        <a href="/auth">Connect Gmail</a>
+    {% endif %}
+
     </br>
     </br>
 

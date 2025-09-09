@@ -10,6 +10,7 @@ from flask import (
 )
 from functools import wraps
 from server.database_client import UserDB
+from server.oauth_handler import GoogleOAuth
 
 
 app = Flask(__name__)
@@ -17,6 +18,7 @@ app.secret_key = "your_secret_key_here"
 
 # Initialize components
 db = UserDB()
+oauth = GoogleOAuth()
 
 
 def login_required(f):
@@ -112,9 +114,72 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    user_id = session.get("user_id")
     username = session.get("username")
-    return render_template("dashboard.html", username=username)
+    user_gmail = db.get_user_gmail(user_id=user_id)
+    return render_template(
+        "dashboard.html", user_id=user_id, username=username, user_gmail=user_gmail
+    )
+
+
+@app.route("/auth")
+@login_required
+def auth():
+    return redirect(oauth.get_auth_url())
+
+
+@app.route("/login/callback")
+@login_required
+def callback():
+    """Handle OAuth callback and create workflow"""
+    code = request.args.get("code")
+    error = request.args.get("error")
+    user_id = session["user_id"]
+
+    if error:
+        flash(f"Authorization error: {error}", "error")
+        return redirect(url_for("dashboard"))
+
+    if not code:
+        flash("No authorization code received", "error")
+        return redirect(url_for("dashboard"))
+
+    try:
+        print("🔄 Processing OAuth callback...")
+
+        # Exchange code for tokens
+        tokens = oauth.exchange_code(code)
+        access_token = tokens["access_token"]
+        refresh_token = tokens["refresh_token"]
+        print("✅ Got OAuth tokens")
+
+        # Get user gmail
+        gmail = oauth.get_user_email(access_token)
+        print(f"✅ Gmail: {gmail}")
+
+        # Check if this Gmail account is already connected by another user
+        gmail_credential = db.get_gmail_credential_by_email(gmail)
+        if gmail_credential and gmail_credential["user_id"] != user_id:
+            flash(
+                f"Gmail account {gmail} is already connected by another user", "error"
+            )
+            return redirect(url_for("dashboard"))
+
+        # Save credential to database
+        db.create_gmail_credential(user_id, gmail, access_token, refresh_token)
+        print("✅ Saved credential to database")
+
+        flash(
+            f"Successfully connected Gmail account {gmail}!",
+            "success",
+        )
+        return redirect(url_for("dashboard"))
+
+    except Exception as e:
+        print(f"❌ Setup failed: {str(e)}")
+        flash(f"Setup failed: {str(e)}", "error")
+        return redirect(url_for("dashboard"))
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    app.run(debug=True, port=5000, host="0.0.0.0", ssl_context="adhoc")
