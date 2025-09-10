@@ -89,57 +89,15 @@ def llm_extract_fields(gmail_data):
     return response
 
 
-def llm_chat_summarizer(transaction_detail):
-    # Initialize OpenAI client
-    openai_client = OpenAIClient(os.getenv("OPENAI_API_KEY"))
-
-    system_message = f"""
-    You are a message summarizer for an expense tracker bot. The account belongs to Ritwik Raj.
-
-    If the transaction is debit, it means Ritwik paid the counterparty.
-    
-    If the transaction is credit, it means Ritwik received money from the counterparty.
-    
-    Your task is to generate a minimal, crisp text message (suitable for a Telegram bot) that includes:
-    
-    Who the transaction is with (counterparty).
-    
-    Whether Ritwik paid or received.
-    
-    Transaction amount.
-    
-    Transaction date and time. (Should always in IST format)
-    
-    At the bottom, include the Transaction ID in a smaller style (or simply as a plain line).
-    
-    The output must be only the text message, with no extra explanation.
-    
-    Time should be in IST 12 Hour Format.
-    """
-
-    user_message = f"""
-    Here are the transaction details:
-    
-    Transaction ID: {transaction_detail['transaction_id']}
-    Transaction Type: {transaction_detail['transaction_type']}
-    Transaction Amount: {transaction_detail['amount']}
-    Counterparty: {transaction_detail['counterparty']}
-    Transaction Date: {transaction_detail['transaction_date']}
-    Transaction Time: {transaction_detail['transaction_time']}
-    """
-
-    # Simple usage
-    response = openai_client.chat(
-        system_message=system_message, user_message=user_message
-    )
-    return response
+def chat_summarizer(transaction_detail):
+    chat_message = f"*Transaction Alert:*\nPaid ₹{transaction_detail['amount']} to {transaction_detail['counterparty']} on {transaction_detail['transaction_date']} at {transaction_detail['transaction_time']}\n\n_Transaction ID:_ *{transaction_detail['transaction_id']}*"
+    return chat_message
 
 
 def send_telegram_message(transaction_message, chat_id):
     telegram = TelegramClient(os.getenv("TELEGRAM_BOT_TOKEN"))
 
-    bot_message = f"*Transaction Alert:*\n{transaction_message}"
-
+    # Todo: Create a transaction category table in postgres.
     # Todo: Fetch transaction category for the user from database.
     transaction_categories = [
         "🛍️ Shopping",
@@ -166,7 +124,7 @@ def send_telegram_message(transaction_message, chat_id):
 
     result = telegram.wait_for_selection_or_custom_input(
         chat_id=chat_id,
-        message=bot_message,
+        message=transaction_message,
         predefined_options=transaction_categories,
         parse_mode="Markdown",
         timeout_minutes=1,
@@ -214,8 +172,7 @@ if __name__ == "__main__":
     out2 = llm_extract_fields(gmail_data=out1)
 
     # Step-3
-    # Todo: Remove LLM call, create a pre-defined chat message template.
-    out3 = llm_chat_summarizer(transaction_detail=out2)
+    out3 = chat_summarizer(transaction_detail=out2)
 
     # Step-4
     user_chat_id = os.getenv("TELEGRAM_CHAT_ID")
