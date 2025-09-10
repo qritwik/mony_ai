@@ -61,17 +61,10 @@ class PostgresClient:
             self.cur = self.conn.cursor(cursor_factory=RealDictCursor)
             print("✅ Reconnected to PostgreSQL")
 
-    def insert_or_update(self, table, data, update_column=None):
+    def insert_or_update(self, table, data, conflict_columns=None):
         """
-        Insert or update a row in the table
-
-        Args:
-            table (str): Table name
-            data (dict): Dictionary of column-value pairs
-            update_column (str): Column name to check for conflicts (for updates)
-
-        Returns:
-            bool: True if successful
+        Insert or upsert a row using PostgreSQL ON CONFLICT.
+        conflict_columns can be a str (single column) or a list/tuple (multiple columns).
         """
         try:
             self._ensure_connection()
@@ -84,28 +77,45 @@ class PostgresClient:
             columns_sql = ", ".join(columns)
             placeholders = ", ".join(["%s"] * len(values))
 
-            if not update_column or update_column not in data:
+            if not conflict_columns:
                 # Simple INSERT
                 sql = f"INSERT INTO {table} ({columns_sql}) VALUES ({placeholders})"
                 self.cur.execute(sql, values)
                 print(f"✅ Inserted row into {table}")
             else:
-                # UPSERT using ON CONFLICT (PostgreSQL 9.5+)
-                update_columns = [col for col in columns if col != update_column]
-                set_clause = ", ".join(
-                    [f"{col} = EXCLUDED.{col}" for col in update_columns]
+                # Normalize to list for multiple columns
+                if isinstance(conflict_columns, (list, tuple)):
+                    conflict_cols = list(conflict_columns)
+                else:
+                    conflict_cols = [str(conflict_columns)]
+
+                # Do not update the conflict columns themselves
+                update_columns = [c for c in columns if c not in conflict_cols]
+                set_clause = (
+                    ", ".join([f"{col} = EXCLUDED.{col}" for col in update_columns])
+                    or None
                 )
 
-                sql = f"""
-                INSERT INTO {table} ({columns_sql}) 
-                VALUES ({placeholders})
-                ON CONFLICT ({update_column}) 
-                DO UPDATE SET {set_clause}
-                """
+                conflict_target = ", ".join(conflict_cols)
+                if set_clause:
+                    sql = f"""
+                        INSERT INTO {table} ({columns_sql})
+                        VALUES ({placeholders})
+                        ON CONFLICT ({conflict_target})
+                        DO UPDATE SET {set_clause}
+                    """
+                else:
+                    # If there is nothing to update, prefer DO NOTHING
+                    sql = f"""
+                        INSERT INTO {table} ({columns_sql})
+                        VALUES ({placeholders})
+                        ON CONFLICT ({conflict_target})
+                        DO NOTHING
+                    """
 
                 self.cur.execute(sql, values)
                 print(
-                    f"✅ Inserted/Updated row in {table} (conflict on {update_column})"
+                    f"✅ Inserted/Updated row in {table} (conflict on {conflict_target})"
                 )
 
             return True

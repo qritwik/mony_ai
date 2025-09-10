@@ -19,11 +19,17 @@ def read_gmail(query):
     # Get emails (now includes 'id' field)
     unread = gmail.get_emails(query, 1)
 
+    message_id = unread[0]["id"]
     subject = unread[0]["subject"]
     date = unread[0]["date"]
     html_body = unread[0]["html_body"]
 
-    return {"subject": subject, "date": date, "html_body": html_body}
+    return {
+        "message_id": message_id,
+        "subject": subject,
+        "date": date,
+        "html_body": html_body,
+    }
 
 
 def llm_extract_fields(gmail_data):
@@ -129,12 +135,12 @@ def llm_chat_summarizer(transaction_detail):
     return response
 
 
-def send_telegram_message(transaction_message):
+def send_telegram_message(transaction_message, chat_id):
     telegram = TelegramClient(os.getenv("TELEGRAM_BOT_TOKEN"))
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     bot_message = f"*Transaction Alert:*\n{transaction_message}"
 
+    # Todo: Fetch transaction category for the user from database.
     transaction_categories = [
         "🛍️ Shopping",
         "🍽️ Eating Out",
@@ -170,7 +176,7 @@ def send_telegram_message(transaction_message):
     return result
 
 
-def insert_to_db():
+def insert_user_transaction_to_db(data):
     pg_client = PostgresClient(
         host=os.getenv("DB_HOST", "localhost"),
         port=os.getenv("DB_PORT", 5432),
@@ -180,17 +186,73 @@ def insert_to_db():
     )
 
     pg_client.insert_or_update(
-        "users",
-        {"name": "Alice Updated", "email": "alice@example.com", "age": 31},
-        update_column="email",
+        table="user_transactions",
+        data=data,
+        conflict_columns=["user_id", "transaction_id"],
     )
 
     pg_client.close()
 
 
+def mark_email_read(message_id):
+    gmail = GmailClient(
+        access_token=os.getenv("GOOGLE_ACCESS_TOKEN"),
+        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    )
+
+    return gmail.mark_message_as_read(message_id=message_id)
+
+
 if __name__ == "__main__":
-    out1 = read_gmail(query="is:unread in:inbox newer_than:7d from:alerts@hdfcbank.net")
+    # Step-1
+    user_query_str = "is:unread in:inbox newer_than:7d from:alerts@hdfcbank.net"
+    out1 = read_gmail(query=user_query_str)
+
+    # Step-2
     out2 = llm_extract_fields(gmail_data=out1)
+
+    # Step-3
+    # Todo: Remove LLM call, create a pre-defined chat message template.
     out3 = llm_chat_summarizer(transaction_detail=out2)
-    out4 = send_telegram_message(transaction_message=out3)
-    print(out4)
+
+    # Step-4
+    user_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    out4 = send_telegram_message(transaction_message=out3, chat_id=user_chat_id)
+
+    # Step-5
+    if out4:
+        # User provided category
+        if out4["type"] == "predefined":
+            transaction_category = out4["value"]
+        else:
+            # custom category
+            transaction_category = out4["value"]
+
+            # Todo: 1. Use LLM to map custom category to our category
+            # Todo: 2. If can't be mapped, create a new category for that user
+    else:
+        # User didn't provide category
+        # Todo: Use LLM to fetch the category
+        transaction_category = "Test"
+
+    user_transaction_data = {
+        "user_id": 1,
+        "transaction_type": out2["transaction_type"],
+        "amount": out2["amount"],
+        "counterparty": out2["counterparty"],
+        "transaction_id": out2["transaction_id"],
+        "transaction_date": out2["transaction_date"],
+        "transaction_time": out2["transaction_time"],
+        "transaction_category": transaction_category,
+    }
+
+    insert_user_transaction_to_db(data=user_transaction_data)
+
+    # Step-6
+    out6 = mark_email_read(message_id=out1["message_id"])
+    if out6:
+        print("Workflow ran successfully!")
+    else:
+        print("Error while marking email as read!")
