@@ -49,9 +49,9 @@ class UserDB:
                 cursor.execute(
                     """
                     SELECT * FROM users 
-                    WHERE username = %s AND password = %s AND status = 'active'
+                    WHERE username = %s AND password = %s AND is_active = %s
                 """,
-                    (username, password),
+                    (username, password, True),
                 )
                 row = cursor.fetchone()
                 return dict(row) if row else None
@@ -62,11 +62,11 @@ class UserDB:
                 cursor.execute(
                     """
                     SELECT * FROM gmail_credentials 
-                    WHERE user_id = %s and status = %s
+                    WHERE user_id = %s and is_active = %s
                 """,
                     (
                         user_id,
-                        "active",
+                        True,
                     ),
                 )
                 row = cursor.fetchone()
@@ -78,9 +78,9 @@ class UserDB:
                 cursor.execute(
                     """
                     SELECT * FROM gmail_credentials 
-                    WHERE gmail_email = %s and status = %s
+                    WHERE gmail_email = %s and is_active = %s
                 """,
-                    (email, "active"),
+                    (email, True),
                 )
                 row = cursor.fetchone()
                 return dict(row) if row else None
