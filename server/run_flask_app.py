@@ -1,3 +1,4 @@
+import logging
 from flask import (
     Flask,
     request,
@@ -20,6 +21,13 @@ app.secret_key = "your_secret_key_here"
 db = UserDB()
 oauth = GoogleOAuth()
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,  # Use DEBUG for more details
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 
 def login_required(f):
     """Decorator to require login for routes"""
@@ -27,6 +35,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "user_id" not in session:
+            logger.warning("Unauthorized access attempt to %s", request.path)
             return redirect(url_for("login"))
         return f(*args, **kwargs)
 
@@ -37,7 +46,10 @@ def login_required(f):
 def home():
     if "user_id" in session:
         username = session["username"]
-        return render_template("dashboard.html", username=username)
+        logger.info("User %s accessed home page", username)
+        logger.info("Redirecting home '/' to dashboard")
+        return redirect(url_for("dashboard"))
+    logger.info("Redirecting unauthenticated user to login")
     return redirect(url_for("login"))
 
 
@@ -46,8 +58,10 @@ def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
+        logger.info("Login attempt for username: %s", username)
 
         if not username or not password:
+            logger.warning("Login failed: Missing username or password")
             return render_template(
                 "login.html", message="Please provide both username and password"
             )
@@ -57,8 +71,10 @@ def login():
         if user:
             session["user_id"] = user["id"]
             session["username"] = user["username"]
+            logger.info("Login successful for username: %s", username)
             return redirect(url_for("dashboard"))
         else:
+            logger.warning("Invalid login for username: %s", username)
             return render_template("login.html", message="Invalid username or password")
 
     return render_template("login.html")
@@ -73,32 +89,41 @@ def register():
         confirm_password = request.form.get("confirm_password")
         phone = request.form.get("phone")
 
+        logger.info("Registration attempt for username: %s", username)
+
         # Validation
         if not all([name, username, password, confirm_password]):
+            logger.warning("Registration failed: Missing fields")
             return render_template("register.html", message="All fields are required")
 
         if password != confirm_password:
+            logger.warning("Registration failed: Passwords do not match")
             return render_template("register.html", message="Passwords do not match")
 
         if len(password) < 6:
+            logger.warning("Registration failed: Weak password")
             return render_template(
                 "register.html", message="Password must be at least 6 characters long"
             )
 
         if len(username) < 3:
+            logger.warning("Registration failed: Short username")
             return render_template(
                 "register.html", message="Username must be at least 3 characters long"
             )
 
-        if phone and len(phone) != 10 and not phone.isdigit():
+        if phone and (len(phone) != 10 or not phone.isdigit()):
+            logger.warning("Registration failed: Invalid phone number")
             return render_template(
                 "register.html", message="Phone should be of 10 digits"
             )
 
         # Create user
         if db.create_user(name, username, password, phone):
+            logger.info("User registered successfully: %s", username)
             return render_template("login.html")
         else:
+            logger.warning("Registration failed: Username already exists")
             return render_template("register.html", message="Username already exists")
 
     return render_template("register.html")
@@ -107,6 +132,8 @@ def register():
 @app.route("/logout")
 @login_required
 def logout():
+    username = session.get("username")
+    logger.info("User %s logged out", username)
     session.clear()
     return redirect(url_for("home"))
 
@@ -117,6 +144,8 @@ def dashboard():
     user_id = session.get("user_id")
     username = session.get("username")
     user_gmail = db.get_user_gmail(user_id=user_id)
+
+    logger.info("Dashboard accessed by user %s (ID: %s)", username, user_id)
     return render_template(
         "dashboard.html", user_id=user_id, username=username, user_gmail=user_gmail
     )
@@ -125,6 +154,7 @@ def dashboard():
 @app.route("/auth")
 @login_required
 def auth():
+    logger.info("OAuth authorization started for user %s", session.get("username"))
     return redirect(oauth.get_auth_url())
 
 
@@ -137,29 +167,32 @@ def callback():
     user_id = session["user_id"]
 
     if error:
+        logger.error("Authorization error: %s", error)
         flash(f"Authorization error: {error}", "error")
         return redirect(url_for("dashboard"))
 
     if not code:
+        logger.error("No authorization code received for user ID %s", user_id)
         flash("No authorization code received", "error")
         return redirect(url_for("dashboard"))
 
     try:
-        print("🔄 Processing OAuth callback...")
+        logger.info("Processing OAuth callback for user ID %s", user_id)
 
         # Exchange code for tokens
         tokens = oauth.exchange_code(code)
         access_token = tokens["access_token"]
         refresh_token = tokens["refresh_token"]
-        print("✅ Got OAuth tokens")
+        logger.info("Got OAuth tokens for user ID %s", user_id)
 
         # Get user gmail
         gmail = oauth.get_user_email(access_token)
-        print(f"✅ Gmail: {gmail}")
+        logger.info("Fetched Gmail %s for user ID %s", gmail, user_id)
 
-        # Check if this Gmail account is already connected by another user
+        # Check if Gmail is already connected by another user
         gmail_credential = db.get_gmail_credential_by_email(gmail)
         if gmail_credential and gmail_credential["user_id"] != user_id:
+            logger.warning("Gmail %s already connected by another user", gmail)
             flash(
                 f"Gmail account {gmail} is already connected by another user", "error"
             )
@@ -167,7 +200,7 @@ def callback():
 
         # Save credential to database
         db.create_gmail_credential(user_id, gmail, access_token, refresh_token)
-        print("✅ Saved credential to database")
+        logger.info("Saved Gmail credential for user %s", gmail)
 
         flash(
             f"Successfully connected Gmail account {gmail}!",
@@ -176,7 +209,7 @@ def callback():
         return redirect(url_for("dashboard"))
 
     except Exception as e:
-        print(f"❌ Setup failed: {str(e)}")
+        logger.exception("OAuth setup failed for user ID %s", user_id)
         flash(f"Setup failed: {str(e)}", "error")
         return redirect(url_for("dashboard"))
 
