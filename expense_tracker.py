@@ -3,6 +3,7 @@ from client.gmail_client import GmailClient
 from client.openai_client import OpenAIClient
 from client.telegram_client import TelegramClient
 from client.postgres_client import PostgresClient
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -90,7 +91,19 @@ def llm_extract_fields(gmail_data):
 
 
 def chat_summarizer(transaction_detail):
-    chat_message = f"*Transaction Alert:*\nPaid ₹{transaction_detail['amount']} to {transaction_detail['counterparty']} on {transaction_detail['transaction_date']} at {transaction_detail['transaction_time']}\n\n_Transaction ID:_ *{transaction_detail['transaction_id']}*"
+    def format_datetime(dt_str: str) -> str:
+        # Parse the given string into a datetime object
+        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+
+        # Format into the required style
+        return dt.strftime("%d %b %Y at %I:%M %p")
+
+    formatted_datetime_str = format_datetime(
+        transaction_detail["transaction_date"]
+        + " "
+        + transaction_detail["transaction_time"]
+    )
+    chat_message = f"*Transaction Alert:*\nPaid ₹{transaction_detail['amount']} to {transaction_detail['counterparty']} on {formatted_datetime_str}\n\n_Transaction ID:_ *{transaction_detail['transaction_id']}*"
     return chat_message
 
 
