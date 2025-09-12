@@ -292,5 +292,20 @@ def delete_transaction_category():
         return redirect(url_for("dashboard"))
 
 
+@app.route("/disconnect_gmail_workflow", methods=["GET"])
+@login_required
+def disconnect_gmail_workflow():
+    user_id = session.get("user_id")
+
+    # Delete user expense tracker workflow
+    db.delete_workflow(user_id=user_id)
+
+    # Delete user gmail credentials
+    db.delete_gmail_credential(user_id=user_id)
+
+    flash(f"Gmail disconnected and workflow deactivated successfully!")
+    return redirect(url_for("dashboard"))
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0", ssl_context="adhoc")

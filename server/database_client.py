@@ -278,6 +278,46 @@ class UserDB:
             print(f"❌ Error deleting transaction category: {e}")
             raise
 
+    def delete_gmail_credential(self, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        DELETE FROM gmail_credentials
+                        WHERE user_id = %s
+                        """,
+                        (user_id,),
+                    )
+                conn.commit()
+                return (
+                    cursor.rowcount > 0
+                )  # ✅ True if a row was deleted, False otherwise
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error deleting user gmail credentials: {e}")
+            raise
+
+    def delete_workflow(self, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        DELETE FROM workflow
+                        WHERE user_id = %s
+                        """,
+                        (user_id,),
+                    )
+                conn.commit()
+                return (
+                    cursor.rowcount > 0
+                )  # ✅ True if a row was deleted, False otherwise
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error deleting user workflow: {e}")
+            raise
+
 
 if __name__ == "__main__":
     db = UserDB()
