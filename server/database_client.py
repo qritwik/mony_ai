@@ -1,20 +1,37 @@
 import os
 import psycopg2
-from dotenv import load_dotenv
 import psycopg2.extras
-from typing import Optional, Dict, List
+from dotenv import load_dotenv
+from typing import Optional, Dict
+from threading import Lock
 
 load_dotenv()
 
 
 class UserDB:
+    _instance = None
+    _lock: Lock = Lock()  # class-level lock for thread safety
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            with cls._lock:  # ensure only one thread initializes
+                if not cls._instance:  # double-checked locking
+                    cls._instance = super(UserDB, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        self.DB_HOST = os.getenv("DB_HOST")
-        self.DB_PORT = os.getenv("DB_PORT")
-        self.DB_NAME = os.getenv("DB_NAME")
-        self.DB_USER = os.getenv("DB_USER")
-        self.DB_PASSWORD = os.getenv("DB_PASSWORD")
-        self.conn_string = f"host={self.DB_HOST} port={self.DB_PORT} dbname={self.DB_NAME} user={self.DB_USER} password={self.DB_PASSWORD}"
+        # Prevent reinitialization on subsequent calls
+        if not hasattr(self, "_initialized"):
+            self.DB_HOST = os.getenv("DB_HOST")
+            self.DB_PORT = os.getenv("DB_PORT")
+            self.DB_NAME = os.getenv("DB_NAME")
+            self.DB_USER = os.getenv("DB_USER")
+            self.DB_PASSWORD = os.getenv("DB_PASSWORD")
+            self.conn_string = (
+                f"host={self.DB_HOST} port={self.DB_PORT} dbname={self.DB_NAME} "
+                f"user={self.DB_USER} password={self.DB_PASSWORD}"
+            )
+            self._initialized = True  # mark as initialized
 
     def _get_connection(self):
         return psycopg2.connect(self.conn_string)
