@@ -10,11 +10,11 @@
 <body class="bg-light min-vh-100">
 
   <!-- Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+  <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
     <div class="container-fluid">
-      <a class="navbar-brand fw-bold" href="#">Mony AI Dashboard</a>
+      <a class="navbar-brand fw-bold text-primary" href="#">Mony AI</a>
       <div class="d-flex">
-        <a href="/logout" class="btn btn-outline-light rounded-pill">
+        <a href="/logout" class="btn btn-outline-primary rounded-pill">
           <i class="bi bi-box-arrow-right"></i> Logout
         </a>
       </div>
@@ -39,23 +39,56 @@
     {% endwith %}
 
     <!-- Dashboard Card -->
-    <div class="card shadow-lg rounded-4 p-4">
-      <h2 class="fw-bold mb-2">Hello, {{ username }} 👋</h2>
-      <h5 class="text-muted">User ID: {{ user_id }}</h5>
-      <p class="mt-3">Welcome to <span class="fw-bold">Mony AI Dashboard</span> 🎉</p>
-
-      <hr class="my-4">
+    <div class="card shadow-sm border-0 rounded-4 p-4">
+      <h3 class="fw-semibold">Hello, {{ username }} 👋</h3>
+      <p class="text-muted mb-1">User ID: <span class="fw-medium">{{ user_id }}</span></p>
+      <p class="mb-4">Welcome to <span class="fw-bold text-primary">Mony AI Dashboard</span> 🎉</p>
 
       <!-- Gmail Connection -->
       {% if user_gmail %}
-        <div class="alert alert-success rounded-3 shadow-sm">
-          ✅ Gmail connected: <strong>{{ user_gmail.gmail_email }}</strong>
+        <div class="alert alert-success rounded-3 shadow-sm mb-4">
+          <i class="bi bi-check-circle-fill"></i> Gmail connected:
+          <strong>{{ user_gmail.gmail_email }}</strong>
         </div>
+
+        <!-- Expense Tracker (only visible if Gmail connected) -->
+        {% if user_workflow %}
+          <div class="border rounded-3 p-3 bg-light">
+            <h6 class="fw-bold mb-2">📊 Expense Tracker</h6>
+            <p class="mb-1">Your expense tracker is <span class="text-success fw-semibold">activated</span> and running fine.</p>
+            <p class="mb-0"><strong>Email Subject:</strong> {{ user_workflow.gmail_query_str }}</p>
+            <p class="mb-0"><strong>Telegram Chat ID:</strong> {{ user_workflow.user_telegram_chat_id }}</p>
+          </div>
+        {% else %}
+          <div class="border rounded-3 p-3 bg-light">
+            <h6 class="fw-bold mb-2">📊 Expense Tracker</h6>
+            <p class="mb-1 text-muted">Your expense tracker is not activated.</p>
+            <p class="mb-3">Please enter the details below to activate:</p>
+
+            <form method="POST" action="/activate_workflow">
+              <div class="mb-3">
+                <label class="form-label">Email subject for financial emails</label>
+                <input type="text" name="gmail_query_str" class="form-control" placeholder="Enter subject keyword">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Your Telegram Chat ID</label>
+                <input type="text" name="user_telegram_chat_id" class="form-control" placeholder="Enter Telegram Chat ID">
+              </div>
+              <div class="d-grid">
+                <button type="submit" class="btn btn-success rounded-pill">
+                  <i class="bi bi-check2-circle"></i> Activate Workflow
+                </button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
       {% else %}
-        <div class="alert alert-warning rounded-3 shadow-sm">
-          ⚠️ Gmail not connected!
+        <div class="alert alert-warning rounded-3 shadow-sm mb-0">
+          <i class="bi bi-exclamation-triangle-fill"></i> Gmail not connected!
           <div class="mt-2">
-            <a href="/auth" class="btn btn-primary btn-sm rounded-pill">Connect Gmail</a>
+            <a href="/auth" class="btn btn-primary btn-sm rounded-pill">
+              <i class="bi bi-envelope-plus"></i> Connect Gmail
+            </a>
           </div>
         </div>
       {% endif %}

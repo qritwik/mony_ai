@@ -94,12 +94,77 @@ class UserDB:
                         INSERT INTO gmail_credentials (user_id, gmail_email, access_token, refresh_token)
                         VALUES (%s, %s, %s, %s)
                         """,
-                        (user_id, email, access_token, refresh_token),
+                        (
+                            user_id,
+                            email,
+                            access_token,
+                            refresh_token,
+                        ),
                     )
                 conn.commit()
                 return True
         except psycopg2.IntegrityError:
             conn.rollback()
+            raise
+
+    def create_workflow(self, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO workflow (user_id)
+                        VALUES (%s)
+                        """,
+                        (user_id,),
+                    )
+                conn.commit()
+                return True
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            raise
+
+    def get_active_user_workflow(self, user_id) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM workflow 
+                    WHERE user_id = %s and is_active = %s
+                """,
+                    (
+                        user_id,
+                        True,
+                    ),
+                )
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+    def activate_user_workflow(self, user_id, gmail_query_str, user_telegram_chat_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(
+                    cursor_factory=psycopg2.extras.RealDictCursor
+                ) as cursor:
+                    sql = """
+                    UPDATE workflow
+                    SET 
+                        is_active = TRUE,
+                        gmail_query_str = %s,
+                        user_telegram_chat_id = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    """
+
+                    cursor.execute(
+                        sql, (gmail_query_str, str(user_telegram_chat_id), user_id)
+                    )
+                conn.commit()
+                print(f"✅ Updated workflow for user_id {user_id}")
+                return True
+
+        except Exception as e:
+            print(f"❌ Error in activate_user_workflow: {e}")
             raise
 
 

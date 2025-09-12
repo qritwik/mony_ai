@@ -144,10 +144,15 @@ def dashboard():
     user_id = session.get("user_id")
     username = session.get("username")
     user_gmail = db.get_user_gmail(user_id=user_id)
+    user_workflow = db.get_active_user_workflow(user_id=user_id)
 
     logger.info("Dashboard accessed by user %s (ID: %s)", username, user_id)
     return render_template(
-        "dashboard.html", user_id=user_id, username=username, user_gmail=user_gmail
+        "dashboard.html",
+        user_id=user_id,
+        username=username,
+        user_gmail=user_gmail,
+        user_workflow=user_workflow,
     )
 
 
@@ -198,9 +203,12 @@ def callback():
             )
             return redirect(url_for("dashboard"))
 
-        # Save credential to database
+        # Save gmail credential to database
         db.create_gmail_credential(user_id, gmail, access_token, refresh_token)
         logger.info("Saved Gmail credential for user %s", gmail)
+
+        # Create workflow for user
+        db.create_workflow(user_id=user_id)
 
         flash(
             f"Successfully connected Gmail account {gmail}!",
@@ -212,6 +220,28 @@ def callback():
         logger.exception("OAuth setup failed for user ID %s", user_id)
         flash(f"Setup failed: {str(e)}", "error")
         return redirect(url_for("dashboard"))
+
+
+@app.route("/activate_workflow", methods=["POST"])
+@login_required
+def activate_workflow():
+    user_id = session.get("user_id")
+    gmail_query_str = request.form.get("gmail_query_str")
+    user_telegram_chat_id = request.form.get("user_telegram_chat_id")
+
+    if not all([gmail_query_str, user_telegram_chat_id]):
+        error_msg = "Workflow activation failed: Missing gmail_query_str or user_telegram_chat_id"
+        logger.error(error_msg)
+        flash(f"{error_msg}", "error")
+        return redirect(url_for("dashboard"))
+
+    db.activate_user_workflow(
+        user_id=user_id,
+        gmail_query_str=gmail_query_str,
+        user_telegram_chat_id=user_telegram_chat_id,
+    )
+
+    return redirect(url_for("dashboard"))
 
 
 if __name__ == "__main__":
