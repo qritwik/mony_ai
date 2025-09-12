@@ -167,11 +167,53 @@ class UserDB:
             print(f"❌ Error in activate_user_workflow: {e}")
             raise
 
+    def get_user_id(self, username: str) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id FROM users 
+                    WHERE username = %s AND is_active = %s
+                """,
+                    (
+                        username,
+                        True,
+                    ),
+                )
+                row = cursor.fetchone()
+                return dict(row).get("id") if row else None
+
+    def add_default_transaction_categories(self, user_id):
+        transaction_categories = [
+            "Food & Dining",
+            "Transportation",
+            "Shopping & Lifestyle",
+            "Bills & Utilities",
+            "Healthcare & Wellness",
+        ]
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    for category in transaction_categories:
+                        cursor.execute(
+                            """
+                            INSERT INTO transaction_category (user_id, category)
+                            VALUES (%s, %s)
+                            ON CONFLICT (user_id, category) DO NOTHING
+                            """,
+                            (user_id, category),
+                        )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"❌ Error inserting default categories: {e}")
+            raise
+
 
 # if __name__ == "__main__":
 #     db = UserDB()
-#     gmail = db.get_user_gmail(user_id=1)
-#     print(gmail)
-#
-#     user = db.authenticate_user("qritwik", "123456")
-#     print(user)
+#     user_id = db.get_user_id(username="qritwik")
+#     print(user_id)
+
+# user = db.authenticate_user("qritwik", "123456")
+# print(user)

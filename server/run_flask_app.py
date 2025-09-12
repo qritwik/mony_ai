@@ -120,6 +120,12 @@ def register():
 
         # Create user
         if db.create_user(name, username, password, phone):
+            # Get the user_id for the user
+            user_id = db.get_user_id(username=username)
+
+            # Add default transaction category for the user
+            db.add_default_transaction_categories(user_id=user_id)
+
             logger.info("User registered successfully: %s", username)
             return render_template("login.html")
         else:
