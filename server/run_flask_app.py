@@ -71,6 +71,7 @@ def login():
         if user:
             session["user_id"] = user["id"]
             session["username"] = user["username"]
+            session["name"] = user["name"]
             logger.info("Login successful for username: %s", username)
             return redirect(url_for("dashboard"))
         else:
@@ -149,16 +150,20 @@ def logout():
 def dashboard():
     user_id = session.get("user_id")
     username = session.get("username")
+    full_name = session.get("name")
     user_gmail = db.get_user_gmail(user_id=user_id)
     user_workflow = db.get_active_user_workflow(user_id=user_id)
+    user_transaction_categories = db.get_transaction_categories(user_id=user_id)
 
     logger.info("Dashboard accessed by user %s (ID: %s)", username, user_id)
     return render_template(
         "dashboard.html",
         user_id=user_id,
         username=username,
+        full_name=full_name,
         user_gmail=user_gmail,
         user_workflow=user_workflow,
+        user_transaction_categories=user_transaction_categories,
     )
 
 
@@ -248,6 +253,43 @@ def activate_workflow():
     )
 
     return redirect(url_for("dashboard"))
+
+
+@app.route("/add_transaction_category", methods=["POST"])
+@login_required
+def add_transaction_category():
+    user_id = session.get("user_id")
+    transaction_category = request.form.get("transaction_category")
+
+    if not all([transaction_category]):
+        error_msg = "Missing transaction_category field!"
+        logger.error(error_msg)
+        flash(f"{error_msg}", "error")
+        return redirect(url_for("dashboard"))
+
+    db.create_transaction_category(user_id=user_id, category=transaction_category)
+
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/delete_transaction_category", methods=["POST"])
+@login_required
+def delete_transaction_category():
+    user_id = session.get("user_id")
+    transaction_category = request.form.get("transaction_category")
+
+    if not all([transaction_category]):
+        error_msg = "Missing transaction_category field!"
+        logger.error(error_msg)
+        flash(f"{error_msg}", "error")
+        return redirect(url_for("dashboard"))
+
+    if db.delete_transaction_category(user_id=user_id, category=transaction_category):
+        flash(f"Deleted transaction category : {transaction_category}")
+        return redirect(url_for("dashboard"))
+    else:
+        flash(f"Error while deleting transaction category : {transaction_category}")
+        return redirect(url_for("dashboard"))
 
 
 if __name__ == "__main__":

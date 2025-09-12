@@ -226,11 +226,63 @@ class UserDB:
             print(f"❌ Error inserting default categories: {e}")
             raise
 
+    def get_transaction_categories(self, user_id) -> list[str]:
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, category 
+                    FROM transaction_category 
+                    WHERE user_id = %s AND is_active = %s
+                    """,
+                    (user_id, True),
+                )
+                rows = cursor.fetchall()
+                return [dict(row).get("category") for row in rows] if rows else []
 
-# if __name__ == "__main__":
-#     db = UserDB()
-#     user_id = db.get_user_id(username="qritwik")
-#     print(user_id)
+    def create_transaction_category(self, user_id, category):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO transaction_category (user_id, category)
+                        VALUES (%s, %s)
+                        ON CONFLICT (user_id, category) DO NOTHING
+                        """,
+                        (user_id, category),
+                    )
+                conn.commit()
+                return True
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            raise
 
-# user = db.authenticate_user("qritwik", "123456")
-# print(user)
+    def delete_transaction_category(self, user_id, category):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        DELETE FROM transaction_category
+                        WHERE user_id = %s AND category = %s
+                        """,
+                        (user_id, category),
+                    )
+                conn.commit()
+                return (
+                    cursor.rowcount > 0
+                )  # ✅ True if a row was deleted, False otherwise
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error deleting transaction category: {e}")
+            raise
+
+
+if __name__ == "__main__":
+    db = UserDB()
+    data = db.get_transaction_categories(user_id=3)
+    print(data)
+
+    # user = db.authenticate_user("qritwik", "123456")
+    # print(user)
