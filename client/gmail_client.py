@@ -39,7 +39,7 @@ class GmailClient:
             return True
         except HttpError as error:
             print(f"An error occurred: {error}")
-            return False
+            raise error
 
     def get_emails(self, query="", count=10):
         """Get emails with search query and decoded body content"""

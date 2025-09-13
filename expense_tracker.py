@@ -162,13 +162,21 @@ def insert_user_transaction_to_db(data):
         password=os.getenv("DB_PASSWORD"),
     )
 
-    pg_client.insert_or_update(
-        table="user_transactions",
-        data=data,
-        conflict_columns=["user_id", "transaction_id"],
-    )
+    try:
+        pk = pg_client.insert_or_update(
+            table="user_transactions",
+            data=data,
+            conflict_columns=["user_id", "transaction_id"],
+            pk_column="id",
+        )
 
-    pg_client.close()
+        if not pk:
+            raise ValueError("Failed to insert or update user transaction")
+
+        return pk
+
+    finally:
+        pg_client.close()
 
 
 def log_user_workflow_run(data):
@@ -187,6 +195,7 @@ def log_user_workflow_run(data):
         table="workflow_run",
         data=data,
         conflict_columns=["user_id", "email_message_id"],
+        pk_column="run_id",
     )
 
     pg_client.close()
@@ -213,6 +222,17 @@ def is_message_already_processed(user_id, message_id):
     return len(result) > 0
 
 
+def mark_as_read(gmail_message_id):
+    gmail = GmailClient(
+        access_token=os.getenv("GOOGLE_ACCESS_TOKEN"),
+        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    )
+
+    gmail.mark_message_as_read(message_id=gmail_message_id)
+
+
 def run_workflow(user_id: int):
     run_start_time = datetime.now()
     run_status = "failure"
@@ -220,7 +240,7 @@ def run_workflow(user_id: int):
 
     try:
         # Step 1: Fetch latest Gmail
-        user_query = "in:inbox newer_than:1d"
+        user_query = "is:unread in:inbox newer_than:1d"
         email_data = read_gmail(query=user_query)
 
         # Step 2: Check if message already processed
@@ -280,7 +300,8 @@ def run_workflow(user_id: int):
             "transaction_time": transaction_info["transaction_time"],
             "transaction_category": transaction_category,
         }
-        insert_user_transaction_to_db(data=user_transaction)
+        transaction_pk = insert_user_transaction_to_db(data=user_transaction)
+        transaction_info["transaction_pk"] = transaction_pk
 
         run_status = "success"
         return (
@@ -316,10 +337,15 @@ if __name__ == "__main__":
         transaction_info,
     ) = run_workflow(user_id)
 
+    print(transaction_info)
+    # Mark message as read
+    mark_as_read(gmail_message_id=email_data.get("message_id", ""))
+
     # Always log workflow run
     log_user_workflow_run(
         data={
             "user_id": user_id,
+            "user_transaction_id": transaction_info.get("transaction_pk"),
             "run_start_datetime": run_start_time,
             "run_end_datetime": run_end_time,
             "email_message_id": email_data.get("message_id", ""),

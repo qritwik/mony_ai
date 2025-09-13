@@ -60,10 +60,18 @@ class PostgresClient:
             self.cur = self.conn.cursor(cursor_factory=RealDictCursor)
             print("✅ Reconnected to PostgreSQL")
 
-    def insert_or_update(self, table, data, conflict_columns=None):
+    def insert_or_update(self, table, data, conflict_columns=None, pk_column="id"):
         """
-        Insert or upsert a row using PostgreSQL ON CONFLICT.
-        conflict_columns can be a str (single column) or a list/tuple (multiple columns).
+        Insert or upsert a row using PostgreSQL ON CONFLICT and return the primary key.
+
+        Args:
+            table (str): Table name
+            data (dict): Column-value mapping
+            conflict_columns (str/list/tuple, optional): Column(s) to handle conflict
+            pk_column (str): Primary key column to return (default "id")
+
+        Returns:
+            int: The primary key of the inserted/updated row
         """
         try:
             self._ensure_connection()
@@ -77,51 +85,62 @@ class PostgresClient:
             placeholders = ", ".join(["%s"] * len(values))
 
             if not conflict_columns:
-                # Simple INSERT
-                sql = f"INSERT INTO {table} ({columns_sql}) VALUES ({placeholders})"
+                # Simple INSERT with RETURNING
+                sql = f"""
+                    INSERT INTO {table} ({columns_sql})
+                    VALUES ({placeholders})
+                    RETURNING {pk_column};
+                """
                 self.cur.execute(sql, values)
-                print(f"✅ Inserted row into {table}")
+                pk = self.cur.fetchone()[pk_column]
+                return pk
             else:
-                # Normalize to list for multiple columns
+                # Normalize conflict columns
                 if isinstance(conflict_columns, (list, tuple)):
                     conflict_cols = list(conflict_columns)
                 else:
                     conflict_cols = [str(conflict_columns)]
 
-                # Do not update the conflict columns themselves
                 update_columns = [c for c in columns if c not in conflict_cols]
                 set_clause = (
-                    ", ".join([f"{col} = EXCLUDED.{col}" for col in update_columns])
-                    or None
+                    ", ".join([f"{c} = EXCLUDED.{c}" for c in update_columns]) or None
                 )
-
                 conflict_target = ", ".join(conflict_cols)
+
                 if set_clause:
                     sql = f"""
                         INSERT INTO {table} ({columns_sql})
                         VALUES ({placeholders})
                         ON CONFLICT ({conflict_target})
                         DO UPDATE SET {set_clause}
+                        RETURNING {pk_column};
                     """
                 else:
-                    # If there is nothing to update, prefer DO NOTHING
+                    # DO NOTHING, still return existing pk
+                    # We need a separate query to fetch PK if conflict occurs
                     sql = f"""
                         INSERT INTO {table} ({columns_sql})
                         VALUES ({placeholders})
                         ON CONFLICT ({conflict_target})
                         DO NOTHING
+                        RETURNING {pk_column};
                     """
 
                 self.cur.execute(sql, values)
-                print(
-                    f"✅ Inserted/Updated row in {table} (conflict on {conflict_target})"
-                )
-
-            return True
+                result = self.cur.fetchone()
+                if result:
+                    return result[pk_column]
+                else:
+                    # Conflict happened, fetch existing row's PK
+                    conflict_where = " AND ".join([f"{c} = %s" for c in conflict_cols])
+                    select_sql = f"SELECT {pk_column} FROM {table} WHERE {conflict_where} LIMIT 1;"
+                    self.cur.execute(select_sql, [data[c] for c in conflict_cols])
+                    existing = self.cur.fetchone()
+                    return existing[pk_column] if existing else None
 
         except Exception as e:
             print(f"❌ Error in insert_or_update: {e}")
-            return False
+            return None
 
     def execute_query(self, query, params=None):
         """
