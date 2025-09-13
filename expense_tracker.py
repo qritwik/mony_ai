@@ -33,32 +33,31 @@ def read_gmail(query):
     }
 
 
-def llm_extract_fields(gmail_data):
-    # Initialize OpenAI client
+def check_finance_email(gmail_data):
     openai_client = OpenAIClient(os.getenv("OPENAI_API_KEY"))
 
-    system_message = f"""
-    You are an expert at parsing HTML email content. The email is a transaction alert from a bank, containing details of a payment.
-    Your task is to extract the following key fields from the HTML:
+    system_message = """
+    You are an expert at parsing HTML email content.  
+
+    Your task is to:  
+    1. Determine whether the email is a **finance related transaction alert** (debit or credit) from a valid source such as a bank or UPI. Ignore promotional or marketing emails.  
+    2. If the email is finance related, extract the following fields:  
     
-    Transaction Type (string, "debit" or "credit")
+       - Transaction Type (string: "debit" or "credit")  
+       - Amount (string, numeric value only, e.g., "1500.00")  
+       - Counterparty (string — "paid to whom" if debit, "received from whom" if credit)  
+       - Transaction ID (string)  
+       - Transaction Date (string in YYYY-MM-DD format, IST timezone)  
+       - Transaction Time (string in HH:MM:SS format, IST 24-hour clock)  
     
-    Amount (string, numeric value only, e.g., "1500.00")
+    3. Use the **Email Received Time** for `transaction_date` and `transaction_time` if not explicitly available in the email body.  
+    4. If any field is missing or unclear, return it as an empty string `""`.  
+    5. The final output must always include a top-level field:  
     
-    Counterparty (string — represents paid_to if debit, or received_from if credit)
+       - `"is_finance_email"`: `true` or `false`  
     
-    Transaction ID (string)
-    
-    Transaction Date (string in YYYY-MM-DD format)
-    
-    Transaction Time (string in HH:MM:SS format, 24-hour clock)
-    
-    Return the extracted information in a structured JSON.
-    
-    Use Email Received Time to extract transaction_date and transaction_time.
-    Always show in IST 24 Hour format.
-    
-    If any field is missing or unclear, return it as an empty string "".
+    If `"is_finance_email": false`, no transaction fields are required.  
+    If `"is_finance_email": true`, return the fields in a structured JSON.
     """
 
     user_message = f"""
@@ -69,18 +68,24 @@ def llm_extract_fields(gmail_data):
 
     assistant_message = """
     Use the sample json for response:
-    
+
+    If finance related:
     {
-      "transaction_type": "",
-      "amount": "",
-      "counterparty": "",
-      "transaction_id": "",
-      "transaction_date": "",
-      "transaction_time": ""
+      "is_finance_email": true,
+      "transaction_type": "debit",
+      "amount": "1500.00",
+      "counterparty": "Amazon",
+      "transaction_id": "TXN123456789",
+      "transaction_date": "2025-09-13",
+      "transaction_time": "14:35:20"
+    }
+    
+    If not finance related:
+    {
+      "is_finance_email": false
     }
     """
 
-    # Simple usage
     response = openai_client.chat(
         system_message=system_message,
         user_message=user_message,
@@ -178,11 +183,15 @@ def mark_email_read(message_id):
 
 if __name__ == "__main__":
     # Step-1
-    user_query_str = "is:unread in:inbox newer_than:7d from:alerts@hdfcbank.net"
+    user_query_str = "is:unread in:inbox newer_than:1d"
     out1 = read_gmail(query=user_query_str)
 
-    # Step-2
-    out2 = llm_extract_fields(gmail_data=out1)
+    out2 = check_finance_email(gmail_data=out1)
+    print(f"Email subject: {out1['subject']}")
+
+    if not out2["is_finance_email"]:
+        print("Not a finance email")
+        exit(0)
 
     # Step-3
     out3 = chat_summarizer(transaction_detail=out2)
@@ -208,7 +217,7 @@ if __name__ == "__main__":
         transaction_category = "Test"
 
     user_transaction_data = {
-        "user_id": 1,
+        "user_id": 4,
         "transaction_type": out2["transaction_type"],
         "amount": out2["amount"],
         "counterparty": out2["counterparty"],
@@ -220,6 +229,8 @@ if __name__ == "__main__":
 
     insert_user_transaction_to_db(data=user_transaction_data)
 
+    # Todo: Create a workflow run table, mark all the run logs for user
+    # Todo: Then it is not required to mark the email as read
     # Step-6
     out6 = mark_email_read(message_id=out1["message_id"])
     if out6:
