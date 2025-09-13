@@ -1,8 +1,8 @@
 import os
-from client.gmail_client import GmailClient
-from client.openai_client import OpenAIClient
-from client.telegram_client import TelegramClient
-from client.postgres_client import PostgresClient
+from workflow.client.gmail_client import GmailClient
+from workflow.client.openai_client import OpenAIClient
+from workflow.client.telegram_client import TelegramClient
+from workflow.client.postgres_client import PostgresClient
 from datetime import datetime
 from dateutil import parser
 from dotenv import load_dotenv
