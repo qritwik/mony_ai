@@ -180,6 +180,9 @@ def log_user_workflow_run(data):
         password=os.getenv("DB_PASSWORD"),
     )
 
+    # Add/overwrite updated_at before insert
+    data["updated_at"] = datetime.now()
+
     pg_client.insert_or_update(
         table="workflow_run",
         data=data,
@@ -207,7 +210,6 @@ def is_message_already_processed(user_id, message_id):
         LIMIT 1;
     """
     result = pg_client.execute_query(query, (user_id, message_id))
-    print(result)
     return len(result) > 0
 
 
