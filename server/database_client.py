@@ -157,7 +157,7 @@ class UserDB:
                 row = cursor.fetchone()
                 return dict(row) if row else None
 
-    def activate_user_workflow(self, user_id, gmail_query_str, user_telegram_chat_id):
+    def activate_user_workflow(self, user_id, user_telegram_chat_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor(
@@ -167,15 +167,12 @@ class UserDB:
                     UPDATE workflow
                     SET 
                         is_active = TRUE,
-                        gmail_query_str = %s,
                         user_telegram_chat_id = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE user_id = %s
                     """
 
-                    cursor.execute(
-                        sql, (gmail_query_str, str(user_telegram_chat_id), user_id)
-                    )
+                    cursor.execute(sql, (str(user_telegram_chat_id), user_id))
                 conn.commit()
                 print(f"✅ Updated workflow for user_id {user_id}")
                 return True

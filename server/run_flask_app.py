@@ -237,18 +237,16 @@ def callback():
 @login_required
 def activate_workflow():
     user_id = session.get("user_id")
-    gmail_query_str = request.form.get("gmail_query_str")
     user_telegram_chat_id = request.form.get("user_telegram_chat_id")
 
-    if not all([gmail_query_str, user_telegram_chat_id]):
-        error_msg = "Workflow activation failed: Missing gmail_query_str or user_telegram_chat_id"
+    if not all([user_telegram_chat_id]):
+        error_msg = "Workflow activation failed: Missing user_telegram_chat_id"
         logger.error(error_msg)
         flash(f"{error_msg}", "error")
         return redirect(url_for("dashboard"))
 
     db.activate_user_workflow(
         user_id=user_id,
-        gmail_query_str=gmail_query_str,
         user_telegram_chat_id=user_telegram_chat_id,
     )
 

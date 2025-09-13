@@ -43,7 +43,6 @@ class PostgresClient:
             self.conn = psycopg2.connect(self.dsn)
             self.conn.autocommit = True
             self.cur = self.conn.cursor(cursor_factory=RealDictCursor)
-            print("✅ Connected to PostgreSQL successfully (Singleton)")
 
         except Exception as e:
             print(f"❌ Failed to connect to PostgreSQL: {e}")
