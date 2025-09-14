@@ -355,7 +355,11 @@ def run_workflow(user_id: int):
     try:
         # Step 1: Fetch latest Gmail
         user_last_read_epoch = get_user_last_email_epoch(user_id=user_id)
-        user_query = f"in:inbox category:primary from:alerts@hdfcbank.net"
+
+        # Used for testing
+        # user_query = f"in:inbox category:primary from:alerts@hdfcbank.net"
+
+        user_query = f"in:inbox category:primary after:{user_last_read_epoch}"
         email_data = read_gmail(query=user_query)
         if not email_data:
             print("No unread emails found.")
