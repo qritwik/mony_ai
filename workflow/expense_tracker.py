@@ -460,8 +460,15 @@ def run_workflow(user_id: int):
         )
 
 
-if __name__ == "__main__":
-    user_id = 11
+def run_user_workflow(user_id: int):
+    """
+    Wrapper function for running the workflow for a user.
+    Just pass the user_id, and it will:
+      - Run the workflow
+      - Log workflow run
+      - Return a clean response dict
+    """
+
     (
         run_status,
         error_message,
@@ -469,7 +476,7 @@ if __name__ == "__main__":
         run_end_time,
         email_data,
         transaction_info,
-    ) = run_workflow(user_id)
+    ) = run_workflow(user_id=user_id)
 
     # Only log if email data is not empty
     if email_data:
@@ -487,7 +494,15 @@ if __name__ == "__main__":
             }
         )
 
-    if run_status == "success":
-        print("Workflow ran successfully!")
-    else:
-        print(f"Workflow failed: {error_message}")
+    return {
+        "status": run_status,
+        "error": error_message,
+        "email_data": email_data,
+        "transaction_info": transaction_info,
+    }
+
+
+if __name__ == "__main__":
+    user_id = 11
+    result = run_user_workflow(user_id)
+    print(result)
