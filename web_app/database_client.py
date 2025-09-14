@@ -294,14 +294,29 @@ class UserDB:
             print(f"❌ Error deleting user workflow: {e}")
             raise
 
+    def get_telegram_info(self, user_id: int) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM user_telegram
+                    WHERE user_id = %s
+                """,
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
 
 if __name__ == "__main__":
     db = UserDB()
-    user_gmail = db.get_user_gmail(user_id=user_id)
-    user_workflow = db.get_user_workflow(user_id=user_id)
-    # data = db.get_transaction_categories(user_id=3)
-    print(user_gmail)
-    print(user_workflow)
+    t = db.get_telegram_info(10)
+    print(t)
+    # user_gmail = db.get_user_gmail(user_id=user_id)
+    # user_workflow = db.get_user_workflow(user_id=user_id)
+    # # data = db.get_transaction_categories(user_id=3)
+    # print(user_gmail)
+    # print(user_workflow)
 
     # user = db.authenticate_user("qritwik", "123456")
     # print(user)

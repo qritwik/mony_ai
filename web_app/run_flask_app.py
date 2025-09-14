@@ -12,6 +12,7 @@ from flask import (
 from functools import wraps
 from web_app.database_client import UserDB
 from web_app.oauth_handler import GoogleOAuth
+import pytz
 
 
 app = Flask(__name__)
@@ -148,15 +149,33 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    # user info
     user_id = session.get("user_id")
     username = session.get("username")
     full_name = session.get("name")
 
+    # workflow info
     user_gmail = db.get_user_gmail(user_id=user_id) or {}
     user_workflow = db.get_user_workflow(user_id=user_id) or {}
     user_data = {**user_gmail, **user_workflow}
 
+    # Convert datetime to IST and format (assuming created_at is always datetime)
+    if user_data.get("created_at"):
+        utc_time = user_data["created_at"]
+
+        # Make timezone-aware (UTC) if naive
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=pytz.UTC)
+
+        # Convert to IST and format
+        ist_time = utc_time.astimezone(pytz.timezone("Asia/Kolkata"))
+        user_data["created_at"] = ist_time.strftime("%B %d, %Y · %I:%M %p")
+
+    # transaction info
     user_transaction_categories = db.get_transaction_categories(user_id=user_id)
+
+    # telegram info
+    telegram_data = db.get_telegram_info(user_id=user_id)
 
     logger.info("Dashboard accessed by user %s (ID: %s)", username, user_id)
     return render_template(
@@ -165,6 +184,7 @@ def dashboard():
         full_name=full_name,
         user_data=user_data,
         user_transaction_categories=user_transaction_categories,
+        telegram_data=telegram_data,
     )
 
 
