@@ -482,7 +482,7 @@ def run_user_workflow(user_id: int):
         transaction_info,
     ) = run_workflow(user_id=user_id)
 
-    # Only log if email data is not empty
+    # Only log if transaction_info is not empty
     if transaction_info:
         log_user_workflow_run(
             data={
