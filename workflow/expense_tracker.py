@@ -18,19 +18,16 @@ def read_gmail(query):
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     )
 
-    # Get emails (now includes 'id' field)
     unread = gmail.get_emails(query, 1)
+    if not unread:
+        return None  # or {}
 
-    message_id = unread[0]["id"]
-    subject = unread[0]["subject"]
-    date = unread[0]["date"]
-    html_body = unread[0]["html_body"]
-
+    email = unread[0]
     return {
-        "message_id": message_id,
-        "subject": subject,
-        "date": date,
-        "html_body": html_body,
+        "message_id": email.get("id", ""),
+        "subject": email.get("subject", ""),
+        "date": email.get("date", ""),
+        "html_body": email.get("html_body", ""),
     }
 
 
@@ -113,33 +110,59 @@ def chat_summarizer(transaction_detail):
     )
 
 
-def send_telegram_message(transaction_message, chat_id):
-    telegram = TelegramClient(os.getenv("TELEGRAM_BOT_TOKEN"))
+def get_user_transaction_categories(user_id):
+    pg_client = PostgresClient(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
 
-    # Todo: Create a transaction category table in postgres.
-    # Todo: Fetch transaction category for the user from database.
-    transaction_categories = [
-        "🛍️ Shopping",
-        "🍽️ Eating Out",
-        "🍔 Online Food Order",
-        "⚡ Quick Commerce",
-        "🏪 Groceries",
-        "☕ Cafe & Beverages",
-        "🚕 Ride-Hailing / Taxi",
-        "✈️ Travel & Flights",
-        "🏨 Hotels & Stays",
-        "🎬 Movies & Entertainment",
-        "📱 Mobile Recharge & Bills",
-        "💡 Utilities (Electricity, Water, Gas)",
-        "🏥 Healthcare & Pharmacy",
-        "🎁 Gifts & Lifestyle",
-        "🛒 E-commerce",
-        "👕 Fashion & Apparel",
-        "🚗 Fuel & Transport",
-        "📚 Education & Courses",
-        "💳 Loan / EMI Payment",
-        "🏦 Bank Transfers & Fees",
-    ]
+    query = """
+        SELECT distinct category
+        FROM transaction_category
+        WHERE user_id = %s
+          AND is_active = %s;
+    """
+    result = pg_client.execute_query(
+        query,
+        (
+            user_id,
+            True,
+        ),
+    )
+
+    return [row["category"] for row in result]
+
+
+def get_user_telegram_info(user_id):
+    pg_client = PostgresClient(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+
+    query = """
+        SELECT telegram_chat_id
+        FROM user_telegram
+        WHERE user_id = %s;
+    """
+    result = pg_client.execute_query(
+        query,
+        (user_id,),
+    )
+
+    if len(result) > 0:
+        return result[0]["telegram_chat_id"]
+    else:
+        return None
+
+
+def send_telegram_message(transaction_message, transaction_categories, chat_id):
+    telegram = TelegramClient(os.getenv("TELEGRAM_BOT_TOKEN"))
 
     result = telegram.wait_for_selection_or_custom_input(
         chat_id=chat_id,
@@ -233,6 +256,31 @@ def mark_as_read(gmail_message_id):
     gmail.mark_message_as_read(message_id=gmail_message_id)
 
 
+def identify_transaction_category(user_id, transaction_detail):
+    # Get all transaction categories for user
+    user_transaction_categories = get_user_transaction_categories(user_id=user_id)
+
+    # Check if user telegram is connected
+    telegram_chat_id = get_user_telegram_info(user_id=user_id)
+
+    if telegram_chat_id:
+        telegram_message = chat_summarizer(transaction_detail=transaction_detail)
+        category_selection = send_telegram_message(
+            transaction_message=telegram_message,
+            transaction_categories=user_transaction_categories,
+            chat_id=telegram_chat_id,
+        )
+        transaction_category = (
+            category_selection["value"] if category_selection else "Uncategorized"
+        )
+    else:
+        print("User Telegram not Connected!")
+        # Todo: Use LLM to identify category for the transaction
+        transaction_category = "Uncategorized"
+
+    return transaction_category
+
+
 def run_workflow(user_id: int):
     run_start_time = datetime.now()
     run_status = "failure"
@@ -240,8 +288,12 @@ def run_workflow(user_id: int):
 
     try:
         # Step 1: Fetch latest Gmail
+        # Todo: Add after in gmail search query and remove mark read section
         user_query = "is:unread in:inbox newer_than:1d"
         email_data = read_gmail(query=user_query)
+        if not email_data:
+            print("No unread emails found.")
+            return "success", "", run_start_time, datetime.now(), {}, {}
 
         # Step 2: Check if message already processed
         if is_message_already_processed(
@@ -276,20 +328,12 @@ def run_workflow(user_id: int):
                 transaction_info,
             )
 
-        # Step 4: Generate transaction summary
-        telegram_message = chat_summarizer(transaction_detail=transaction_info)
-
-        # Step 5: Send Telegram message & get category
-        telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        category_selection = send_telegram_message(
-            transaction_message=telegram_message,
-            chat_id=telegram_chat_id,
-        )
-        transaction_category = (
-            category_selection["value"] if category_selection else "Uncategorized"
+        # Step 4: Identify transaction category
+        transaction_category = identify_transaction_category(
+            user_id=user_id, transaction_detail=transaction_info
         )
 
-        # Step 6: Insert into user transactions table
+        # Step 5: Insert into user transactions table
         user_transaction = {
             "user_id": user_id,
             "transaction_type": transaction_info["transaction_type"],
@@ -327,7 +371,7 @@ def run_workflow(user_id: int):
 
 
 if __name__ == "__main__":
-    user_id = 5
+    user_id = 10
     (
         run_status,
         error_message,
