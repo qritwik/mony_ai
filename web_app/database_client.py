@@ -183,6 +183,7 @@ class UserDB:
             "Shopping & Lifestyle",
             "Bills & Utilities",
             "Healthcare & Wellness",
+            "Others",
         ]
         try:
             with self._get_connection() as conn:

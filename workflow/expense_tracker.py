@@ -1,4 +1,5 @@
 import os
+import json
 from workflow.client.gmail_client import GmailClient
 from workflow.client.openai_client import OpenAIClient
 from workflow.client.telegram_client import TelegramClient
@@ -274,6 +275,46 @@ def is_message_already_processed(user_id, message_id):
     return len(result) > 0
 
 
+def identify_category_using_llm(transaction_detail, user_transaction_categories):
+    openai_client = OpenAIClient(os.getenv("OPENAI_API_KEY"))
+
+    system_message = """
+    You are a financial assistant that classifies transactions into predefined categories. 
+    Always choose the MOST relevant category from the provided list. 
+    If nothing fits, return "Others".
+    """
+
+    user_message = f"""
+    Transaction Detail:
+    {json.dumps(transaction_detail, indent=2)}
+
+    Available Categories:
+    {user_transaction_categories}
+    """
+
+    assistant_message = """
+    Respond with only a JSON object in the format:
+    {
+      "category": "<best matching category>"
+    }
+    """
+
+    response = openai_client.chat(
+        system_message=system_message,
+        user_message=user_message,
+        assistant_message=assistant_message,
+        structured_output=True,
+    )
+
+    # Defensive parsing
+    try:
+        category = response.get("category", "Others")
+    except Exception:
+        category = "Others"
+
+    return category
+
+
 def identify_transaction_category(user_id, transaction_detail):
     # Get all transaction categories for user
     user_transaction_categories = get_user_transaction_categories(user_id=user_id)
@@ -288,14 +329,21 @@ def identify_transaction_category(user_id, transaction_detail):
             transaction_categories=user_transaction_categories,
             chat_id=telegram_chat_id,
         )
-        transaction_category = (
-            category_selection["value"] if category_selection else "Uncategorized"
-        )
+        if category_selection:
+            print("Received category from user's telegram!")
+            transaction_category = category_selection["value"]
+        else:
+            print("Not received category from user's telegram!")
+            transaction_category = identify_category_using_llm(
+                transaction_detail, user_transaction_categories
+            )
     else:
         print("User Telegram not Connected!")
-        # Todo: Use LLM to identify category for the transaction
-        transaction_category = "Uncategorized"
+        transaction_category = identify_category_using_llm(
+            transaction_detail, user_transaction_categories
+        )
 
+    print(f"Transaction category is: {transaction_category}")
     return transaction_category
 
 
@@ -307,7 +355,7 @@ def run_workflow(user_id: int):
     try:
         # Step 1: Fetch latest Gmail
         user_last_read_epoch = get_user_last_email_epoch(user_id=user_id)
-        user_query = f"in:inbox category:primary after:{user_last_read_epoch}"
+        user_query = f"in:inbox category:primary from:alerts@hdfcbank.net"
         email_data = read_gmail(query=user_query)
         if not email_data:
             print("No unread emails found.")
