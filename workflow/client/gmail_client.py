@@ -3,6 +3,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from datetime import datetime, timezone, timedelta
 
 
 class GmailClient:
@@ -15,7 +16,7 @@ class GmailClient:
             token_uri="https://oauth2.googleapis.com/token",
         )
 
-        if creds.expired:
+        if creds.expired and creds.refresh_token:
             creds.refresh(Request())
 
         self.service = build("gmail", "v1", credentials=creds)
@@ -24,32 +25,33 @@ class GmailClient:
     def mark_message_as_read(self, message_id):
         """
         Mark a specific Gmail message as read by removing the UNREAD label.
-
-        Args:
-            message_id (str): The ID of the message to mark as read
-
-        Returns:
-            bool: True if successful, False if an error occurred
         """
         try:
-            # Remove the "UNREAD" label from the message
             self.service.users().messages().modify(
                 userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
             ).execute()
             return True
         except HttpError as error:
             print(f"An error occurred: {error}")
-            raise error
+            raise
 
-    def get_emails(self, query="", count=10):
-        """Get emails with search query and decoded body content"""
-        messages = (
+    def get_first_email_after(self, epoch_time, query=""):
+        """
+        Get the very first email strictly after the given epoch_time.
+        Returns only 1 email (oldest after epoch), or None if not found.
+        """
+        query = f"{query} after:{epoch_time}".strip()
+
+        response = (
             self.service.users()
             .messages()
-            .list(userId="me", q=query, maxResults=count)
+            .list(userId="me", q=query, maxResults=50)  # small batch
             .execute()
-            .get("messages", [])
         )
+
+        messages = response.get("messages", [])
+        if not messages:
+            return None
 
         emails = []
         for msg in messages:
@@ -57,7 +59,14 @@ class GmailClient:
                 self.service.users().messages().get(userId="me", id=msg["id"]).execute()
             )
 
-            # Extract basic info
+            internal_date = int(message.get("internalDate", 0)) // 1000
+            if internal_date <= epoch_time:
+                continue
+
+            # Convert internalDate to IST datetime
+            ist = timezone(timedelta(hours=5, minutes=30))
+            received_dt = datetime.fromtimestamp(internal_date, tz=ist)
+
             headers = message["payload"]["headers"]
             subject = next(
                 (h["value"] for h in headers if h["name"] == "Subject"), "No Subject"
@@ -67,24 +76,29 @@ class GmailClient:
             )
             date = next((h["value"] for h in headers if h["name"] == "Date"), "Unknown")
 
-            # Extract body content
             text_body, html_body = self._extract_body(message["payload"])
 
-            # Create clean email object
-            email_data = {
-                "id": msg["id"],
-                "subject": subject,
-                "from": sender,
-                "date": date,
-                "text_body": text_body,
-                "html_body": html_body,
-                "snippet": message["snippet"],
-                "labels": message.get("labelIds", []),
-            }
+            emails.append(
+                {
+                    "id": msg["id"],
+                    "subject": subject,
+                    "from": sender,
+                    "date": date,
+                    "text_body": text_body,
+                    "html_body": html_body,
+                    "snippet": message.get("snippet", ""),
+                    "labels": message.get("labelIds", []),
+                    "internalDate": internal_date,  # epoch (UTC)
+                    "email_received_datetime": received_dt,
+                }
+            )
 
-            emails.append(email_data)
+        if not emails:
+            return None
 
-        return emails
+        # Pick the oldest one after epoch
+        emails.sort(key=lambda e: e["internalDate"])
+        return emails[0]
 
     def _extract_body(self, payload):
         """Extract both text and HTML body from email"""
@@ -95,11 +109,10 @@ class GmailClient:
             if data:
                 try:
                     return base64.urlsafe_b64decode(data).decode("utf-8")
-                except:
+                except Exception:
                     return ""
             return ""
 
-        # Check if email has multiple parts
         if "parts" in payload:
             for part in payload["parts"]:
                 mime_type = part.get("mimeType", "")
@@ -110,15 +123,13 @@ class GmailClient:
                 elif mime_type == "text/html":
                     html_body = decode_data(data)
 
-                # Handle nested parts (like multipart/alternative)
-                if "parts" in part:
+                if "parts" in part:  # handle nested multiparts
                     nested_text, nested_html = self._extract_body(part)
                     if not text_body:
                         text_body = nested_text
                     if not html_body:
                         html_body = nested_html
         else:
-            # Single part email
             mime_type = payload.get("mimeType", "")
             data = payload.get("body", {}).get("data")
 

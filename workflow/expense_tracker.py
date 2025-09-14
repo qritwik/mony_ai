@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def read_gmail(query):
+def read_gmail(epoch_time, query):
     google_tokens = get_user_google_tokens(user_id=user_id)
     gmail = GmailClient(
         access_token=google_tokens.get("access_token"),
@@ -20,16 +20,16 @@ def read_gmail(query):
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     )
 
-    unread = gmail.get_emails(query, 1)
+    unread = gmail.get_first_email_after(epoch_time=epoch_time, query=query)
     if not unread:
         return None  # or {}
 
-    email = unread[0]
     return {
-        "message_id": email.get("id", ""),
-        "subject": email.get("subject", ""),
-        "date": email.get("date", ""),
-        "html_body": email.get("html_body", ""),
+        "message_id": unread.get("id", ""),
+        "subject": unread.get("subject", ""),
+        "date": unread.get("date", ""),
+        "email_received_datetime": unread.get("email_received_datetime"),
+        "html_body": unread.get("html_body", ""),
     }
 
 
@@ -62,7 +62,7 @@ def get_user_last_email_epoch(user_id):
     )
 
     query = """
-        SELECT MAX(run_start_datetime) as last_run
+        SELECT MAX(email_datetime) as last_run
         FROM workflow_run
         WHERE user_id = %s;
     """
@@ -76,8 +76,8 @@ def get_user_last_email_epoch(user_id):
         # Convert datetime to epoch (int)
         return int(last_run_datetime.timestamp())
     else:
-        # Default: now - 10 hours
-        fallback_time = datetime.now() - timedelta(hours=10)
+        # Default: now - 2 hours
+        fallback_time = datetime.now() - timedelta(hours=2)
         return int(fallback_time.timestamp())
 
 
@@ -89,28 +89,30 @@ def check_finance_email(gmail_data):
 
     Your task is to:  
     1. Determine whether the email is a **finance related transaction alert** (debit or credit) from a valid source such as a bank or UPI. Ignore promotional or marketing emails.  
-    2. If the email is finance related, extract the following fields:  
-    
+    2. Always extract the **Email Received Datetime** in "YYYY-MM-DD HH:MM:SS" format (IST timezone).  
+    3. If the email is finance related, also extract the following fields:  
+
        - Transaction Type (string: "debit" or "credit")  
        - Amount (string, numeric value only, e.g., "1500.00")  
        - Counterparty (string — "paid to whom" if debit, "received from whom" if credit)  
        - Transaction ID (string)  
        - Transaction Date (string in YYYY-MM-DD format, IST timezone)  
        - Transaction Time (string in HH:MM:SS format, IST 24-hour clock)  
-    
-    3. Use the **Email Received Time** for `transaction_date` and `transaction_time` if not explicitly available in the email body.  
-    4. If any field is missing or unclear, return it as an empty string `""`.  
-    5. The final output must always include a top-level field:  
-    
+
+    4. Use the **Email Received Datetime** for `transaction_date` and `transaction_time` if not explicitly available in the email body.  
+    5. If any field is missing or unclear, return it as an empty string `""`.  
+    6. The final output must always include a top-level field:  
+
        - `"is_finance_email"`: `true` or `false`  
-    
-    If `"is_finance_email": false`, no transaction fields are required.  
-    If `"is_finance_email": true`, return the fields in a structured JSON.
+       - `"email_received_datetime"`: string  
+
+    If `"is_finance_email": false`, only `is_finance_email` and `email_received_datetime` are required.  
+    If `"is_finance_email": true`, return all transaction fields along with `email_received_datetime`.
     """
 
     user_message = f"""
     Email Subject: {gmail_data["subject"]}
-    Email Received Time: {gmail_data["date"]}
+    Email Received Datetime: {gmail_data["email_received_datetime"]}
     HTML Content from Email: {gmail_data["html_body"]}
     """
 
@@ -120,6 +122,7 @@ def check_finance_email(gmail_data):
     If finance related:
     {
       "is_finance_email": true,
+      "email_received_datetime": "2025-09-13 14:36:01",
       "transaction_type": "debit",
       "amount": "1500.00",
       "counterparty": "Amazon",
@@ -130,7 +133,8 @@ def check_finance_email(gmail_data):
     
     If not finance related:
     {
-      "is_finance_email": false
+      "is_finance_email": false,
+      "email_received_datetime": "2025-09-13 14:36:01"
     }
     """
 
@@ -379,8 +383,8 @@ def run_workflow(user_id: int):
         # Used for testing
         # user_query = f"in:inbox category:primary from:alerts@hdfcbank.net"
 
-        user_query = f"in:inbox category:primary after:{user_last_read_epoch}"
-        email_data = read_gmail(query=user_query)
+        user_query = f"in:inbox category:primary"
+        email_data = read_gmail(epoch_time=user_last_read_epoch, query=user_query)
         if not email_data:
             print("No unread emails found.")
             return "success", "", run_start_time, datetime.now(), {}, {}
@@ -479,7 +483,7 @@ def run_user_workflow(user_id: int):
     ) = run_workflow(user_id=user_id)
 
     # Only log if email data is not empty
-    if email_data:
+    if transaction_info:
         log_user_workflow_run(
             data={
                 "user_id": user_id,
@@ -488,16 +492,20 @@ def run_user_workflow(user_id: int):
                 "run_end_datetime": run_end_time,
                 "email_message_id": email_data.get("message_id", ""),
                 "email_subject": email_data.get("subject", ""),
+                "email_datetime": transaction_info.get("email_received_datetime"),
                 "is_finance_email": transaction_info.get("is_finance_email", False),
                 "run_status": run_status,
                 "error_message": error_message,
             }
         )
 
+    clean_email_data = dict(email_data or {})
+    clean_email_data.pop("html_body", None)
+
     return {
         "status": run_status,
         "error": error_message,
-        "email_data": email_data,
+        "email_data": clean_email_data,
         "transaction_info": transaction_info,
     }
 
