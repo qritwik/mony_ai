@@ -3,7 +3,7 @@ from workflow.client.gmail_client import GmailClient
 from workflow.client.openai_client import OpenAIClient
 from workflow.client.telegram_client import TelegramClient
 from workflow.client.postgres_client import PostgresClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser
 from dotenv import load_dotenv
 
@@ -29,6 +29,35 @@ def read_gmail(query):
         "date": email.get("date", ""),
         "html_body": email.get("html_body", ""),
     }
+
+
+def get_user_last_email_epoch(user_id):
+    pg_client = PostgresClient(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+
+    query = """
+        SELECT MAX(run_start_datetime) as last_run
+        FROM workflow_run
+        WHERE user_id = %s;
+    """
+
+    result = pg_client.execute_query(query, (user_id,))
+    last_run_datetime = (
+        result[0]["last_run"] if result and result[0]["last_run"] else None
+    )
+
+    if last_run_datetime:
+        # Convert datetime to epoch (int)
+        return int(last_run_datetime.timestamp())
+    else:
+        # Default: now - 10 hours
+        fallback_time = datetime.now() - timedelta(hours=10)
+        return int(fallback_time.timestamp())
 
 
 def check_finance_email(gmail_data):
@@ -245,17 +274,6 @@ def is_message_already_processed(user_id, message_id):
     return len(result) > 0
 
 
-def mark_as_read(gmail_message_id):
-    gmail = GmailClient(
-        access_token=os.getenv("GOOGLE_ACCESS_TOKEN"),
-        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    )
-
-    gmail.mark_message_as_read(message_id=gmail_message_id)
-
-
 def identify_transaction_category(user_id, transaction_detail):
     # Get all transaction categories for user
     user_transaction_categories = get_user_transaction_categories(user_id=user_id)
@@ -288,8 +306,8 @@ def run_workflow(user_id: int):
 
     try:
         # Step 1: Fetch latest Gmail
-        # Todo: Add after in gmail search query and remove mark read section
-        user_query = "is:unread in:inbox newer_than:1d"
+        user_last_read_epoch = get_user_last_email_epoch(user_id=user_id)
+        user_query = f"in:inbox category:primary after:{user_last_read_epoch}"
         email_data = read_gmail(query=user_query)
         if not email_data:
             print("No unread emails found.")
@@ -381,24 +399,21 @@ if __name__ == "__main__":
         transaction_info,
     ) = run_workflow(user_id)
 
-    print(transaction_info)
-    # Mark message as read
-    mark_as_read(gmail_message_id=email_data.get("message_id", ""))
-
-    # Always log workflow run
-    log_user_workflow_run(
-        data={
-            "user_id": user_id,
-            "user_transaction_id": transaction_info.get("transaction_pk"),
-            "run_start_datetime": run_start_time,
-            "run_end_datetime": run_end_time,
-            "email_message_id": email_data.get("message_id", ""),
-            "email_subject": email_data.get("subject", ""),
-            "is_finance_email": transaction_info.get("is_finance_email", False),
-            "run_status": run_status,
-            "error_message": error_message,
-        }
-    )
+    # Only log if email data is not empty
+    if email_data:
+        log_user_workflow_run(
+            data={
+                "user_id": user_id,
+                "user_transaction_id": transaction_info.get("transaction_pk"),
+                "run_start_datetime": run_start_time,
+                "run_end_datetime": run_end_time,
+                "email_message_id": email_data.get("message_id", ""),
+                "email_subject": email_data.get("subject", ""),
+                "is_finance_email": transaction_info.get("is_finance_email", False),
+                "run_status": run_status,
+                "error_message": error_message,
+            }
+        )
 
     if run_status == "success":
         print("Workflow ran successfully!")
