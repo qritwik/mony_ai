@@ -17,7 +17,7 @@ class GoogleOAuth:
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
-            "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify",
+            "scope": "https://www.googleapis.com/auth/gmail.readonly",
             "response_type": "code",
             "access_type": "offline",
             "prompt": "consent",
