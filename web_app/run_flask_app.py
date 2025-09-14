@@ -10,8 +10,8 @@ from flask import (
     url_for,
 )
 from functools import wraps
-from server.database_client import UserDB
-from server.oauth_handler import GoogleOAuth
+from web_app.database_client import UserDB
+from web_app.oauth_handler import GoogleOAuth
 
 
 app = Flask(__name__)
