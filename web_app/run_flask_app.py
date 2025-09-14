@@ -173,6 +173,7 @@ def dashboard():
 
     # transaction info
     user_transaction_categories = db.get_transaction_categories(user_id=user_id)
+    user_transactions = db.get_user_transactions(user_id=user_id)
 
     # telegram info
     telegram_data = db.get_telegram_info(user_id=user_id)
@@ -184,6 +185,7 @@ def dashboard():
         full_name=full_name,
         user_data=user_data,
         user_transaction_categories=user_transaction_categories,
+        user_transactions=user_transactions,
         telegram_data=telegram_data,
     )
 

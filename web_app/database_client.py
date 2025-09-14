@@ -308,10 +308,23 @@ class UserDB:
                 row = cursor.fetchone()
                 return dict(row) if row else None
 
+    def get_user_transactions(self, user_id: int):
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM user_transactions
+                    WHERE user_id = %s
+                """,
+                    (user_id,),
+                )
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows] if rows else []
+
 
 if __name__ == "__main__":
     db = UserDB()
-    t = db.get_telegram_info(10)
+    t = db.get_user_transactions(11)
     print(t)
     # user_gmail = db.get_user_gmail(user_id=user_id)
     # user_workflow = db.get_user_workflow(user_id=user_id)
