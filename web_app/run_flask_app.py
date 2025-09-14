@@ -128,7 +128,7 @@ def register():
             db.add_default_transaction_categories(user_id=user_id)
 
             logger.info("User registered successfully: %s", username)
-            return render_template("login.html")
+            return redirect(url_for("login"))
         else:
             logger.warning("Registration failed: Username already exists")
             return render_template("register.html", message="Username already exists")
@@ -151,18 +151,19 @@ def dashboard():
     user_id = session.get("user_id")
     username = session.get("username")
     full_name = session.get("name")
-    user_gmail = db.get_user_gmail(user_id=user_id)
-    user_workflow = db.get_active_user_workflow(user_id=user_id)
+
+    user_gmail = db.get_user_gmail(user_id=user_id) or {}
+    user_workflow = db.get_user_workflow(user_id=user_id) or {}
+    user_data = {**user_gmail, **user_workflow}
+
     user_transaction_categories = db.get_transaction_categories(user_id=user_id)
 
     logger.info("Dashboard accessed by user %s (ID: %s)", username, user_id)
     return render_template(
         "dashboard.html",
-        user_id=user_id,
         username=username,
         full_name=full_name,
-        user_gmail=user_gmail,
-        user_workflow=user_workflow,
+        user_data=user_data,
         user_transaction_categories=user_transaction_categories,
     )
 
@@ -218,7 +219,7 @@ def callback():
         db.create_gmail_credential(user_id, gmail, access_token, refresh_token)
         logger.info("Saved Gmail credential for user %s", gmail)
 
-        # Create workflow for user
+        # Create active workflow for user
         db.create_workflow(user_id=user_id)
 
         flash(
@@ -231,26 +232,6 @@ def callback():
         logger.exception("OAuth setup failed for user ID %s", user_id)
         flash(f"Setup failed: {str(e)}", "error")
         return redirect(url_for("dashboard"))
-
-
-@app.route("/activate_workflow", methods=["POST"])
-@login_required
-def activate_workflow():
-    user_id = session.get("user_id")
-    user_telegram_chat_id = request.form.get("user_telegram_chat_id")
-
-    if not all([user_telegram_chat_id]):
-        error_msg = "Workflow activation failed: Missing user_telegram_chat_id"
-        logger.error(error_msg)
-        flash(f"{error_msg}", "error")
-        return redirect(url_for("dashboard"))
-
-    db.activate_user_workflow(
-        user_id=user_id,
-        user_telegram_chat_id=user_telegram_chat_id,
-    )
-
-    return redirect(url_for("dashboard"))
 
 
 @app.route("/add_transaction_category", methods=["POST"])

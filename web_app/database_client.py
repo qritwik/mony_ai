@@ -78,7 +78,7 @@ class UserDB:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM gmail_credentials 
+                    SELECT gmail_email FROM gmail_credentials 
                     WHERE user_id = %s and is_active = %s
                 """,
                     (
@@ -130,10 +130,13 @@ class UserDB:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO workflow (user_id)
-                        VALUES (%s)
+                        INSERT INTO workflow (user_id, is_active)
+                        VALUES (%s, %s)
                         """,
-                        (user_id,),
+                        (
+                            user_id,
+                            True,
+                        ),
                     )
                 conn.commit()
                 return True
@@ -141,12 +144,12 @@ class UserDB:
             conn.rollback()
             raise
 
-    def get_active_user_workflow(self, user_id) -> Optional[Dict]:
+    def get_user_workflow(self, user_id) -> Optional[Dict]:
         with self._get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM workflow 
+                    SELECT created_at FROM workflow 
                     WHERE user_id = %s and is_active = %s
                 """,
                     (
@@ -156,30 +159,6 @@ class UserDB:
                 )
                 row = cursor.fetchone()
                 return dict(row) if row else None
-
-    def activate_user_workflow(self, user_id, user_telegram_chat_id):
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor(
-                    cursor_factory=psycopg2.extras.RealDictCursor
-                ) as cursor:
-                    sql = """
-                    UPDATE workflow
-                    SET 
-                        is_active = TRUE,
-                        user_telegram_chat_id = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s
-                    """
-
-                    cursor.execute(sql, (str(user_telegram_chat_id), user_id))
-                conn.commit()
-                print(f"✅ Updated workflow for user_id {user_id}")
-                return True
-
-        except Exception as e:
-            print(f"❌ Error in activate_user_workflow: {e}")
-            raise
 
     def get_user_id(self, username: str) -> Optional[Dict]:
         with self._get_connection() as conn:
@@ -318,8 +297,11 @@ class UserDB:
 
 if __name__ == "__main__":
     db = UserDB()
-    data = db.get_transaction_categories(user_id=3)
-    print(data)
+    user_gmail = db.get_user_gmail(user_id=user_id)
+    user_workflow = db.get_user_workflow(user_id=user_id)
+    # data = db.get_transaction_categories(user_id=3)
+    print(user_gmail)
+    print(user_workflow)
 
     # user = db.authenticate_user("qritwik", "123456")
     # print(user)
