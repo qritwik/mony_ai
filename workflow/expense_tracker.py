@@ -12,9 +12,10 @@ load_dotenv()
 
 
 def read_gmail(query):
+    google_tokens = get_user_google_tokens(user_id=user_id)
     gmail = GmailClient(
-        access_token=os.getenv("GOOGLE_ACCESS_TOKEN"),
-        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
+        access_token=google_tokens.get("access_token"),
+        refresh_token=google_tokens.get("refresh_token"),
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     )
@@ -30,6 +31,25 @@ def read_gmail(query):
         "date": email.get("date", ""),
         "html_body": email.get("html_body", ""),
     }
+
+
+def get_user_google_tokens(user_id: int):
+    pg_client = PostgresClient(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+
+    query = """
+            SELECT access_token, refresh_token
+            FROM gmail_credentials
+            WHERE user_id = %s;
+        """
+
+    result = pg_client.execute_query(query, (user_id,))
+    return result[0]
 
 
 def get_user_last_email_epoch(user_id):
