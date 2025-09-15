@@ -126,8 +126,6 @@ class TelegramClient:
         timeout_seconds = timeout_minutes * 60
         custom_input_mode = False
 
-        print(f"Waiting for selection or custom input... Offset: {self.last_update_id}")
-
         while time.time() - start_time < timeout_seconds:
             try:
                 updates = self.get_updates(offset=self.last_update_id, timeout=2)

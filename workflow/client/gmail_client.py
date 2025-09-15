@@ -1,4 +1,5 @@
 import base64
+import threading
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -7,7 +8,23 @@ from datetime import datetime, timezone, timedelta
 
 
 class GmailClient:
+    _instance = None
+    _instance_lock = threading.Lock()  # ensures singleton creation
+    _lock = threading.Lock()  # ensures thread-safety for API calls
+
+    def __new__(cls, *args, **kwargs):
+        """Ensure only one instance exists (singleton)."""
+        if not cls._instance:
+            with cls._instance_lock:
+                if not cls._instance:
+                    cls._instance = super(GmailClient, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self, access_token, refresh_token, client_id, client_secret):
+        # Ensure init runs only once for the singleton
+        if hasattr(self, "_initialized") and self._initialized:
+            return
+
         creds = Credentials(
             token=access_token,
             refresh_token=refresh_token,
@@ -16,38 +33,37 @@ class GmailClient:
             token_uri="https://oauth2.googleapis.com/token",
         )
 
-        if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+        with GmailClient._lock:
+            if creds.expired and creds.refresh_token:
+                creds.refresh(Request())
 
-        self.service = build("gmail", "v1", credentials=creds)
-        self.new_token = creds.token
+            self.service = build("gmail", "v1", credentials=creds)
+            self.new_token = creds.token
+
+        self._initialized = True
 
     def mark_message_as_read(self, message_id):
-        """
-        Mark a specific Gmail message as read by removing the UNREAD label.
-        """
-        try:
-            self.service.users().messages().modify(
-                userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
-            ).execute()
-            return True
-        except HttpError as error:
-            print(f"An error occurred: {error}")
-            raise
+        """Mark a specific Gmail message as read by removing the UNREAD label."""
+        with GmailClient._lock:
+            try:
+                self.service.users().messages().modify(
+                    userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+                ).execute()
+                return True
+            except HttpError as error:
+                print(f"An error occurred: {error}")
+                raise
 
     def get_first_email_after(self, epoch_time, query=""):
-        """
-        Get the very first email strictly after the given epoch_time.
-        Returns only 1 email (oldest after epoch), or None if not found.
-        """
-        query = f"{query} after:{epoch_time}".strip()
-
-        response = (
-            self.service.users()
-            .messages()
-            .list(userId="me", q=query, maxResults=50)  # small batch
-            .execute()
-        )
+        """Get the very first email strictly after the given epoch_time."""
+        with GmailClient._lock:
+            query = f"{query} after:{epoch_time}".strip()
+            response = (
+                self.service.users()
+                .messages()
+                .list(userId="me", q=query, maxResults=50)
+                .execute()
+            )
 
         messages = response.get("messages", [])
         if not messages:
@@ -55,15 +71,18 @@ class GmailClient:
 
         emails = []
         for msg in messages:
-            message = (
-                self.service.users().messages().get(userId="me", id=msg["id"]).execute()
-            )
+            with GmailClient._lock:
+                message = (
+                    self.service.users()
+                    .messages()
+                    .get(userId="me", id=msg["id"])
+                    .execute()
+                )
 
             internal_date = int(message.get("internalDate", 0)) // 1000
             if internal_date <= epoch_time:
                 continue
 
-            # Convert internalDate to IST datetime
             ist = timezone(timedelta(hours=5, minutes=30))
             received_dt = datetime.fromtimestamp(internal_date, tz=ist)
 
@@ -88,7 +107,7 @@ class GmailClient:
                     "html_body": html_body,
                     "snippet": message.get("snippet", ""),
                     "labels": message.get("labelIds", []),
-                    "internalDate": internal_date,  # epoch (UTC)
+                    "internalDate": internal_date,
                     "email_received_datetime": received_dt,
                 }
             )
@@ -96,7 +115,6 @@ class GmailClient:
         if not emails:
             return None
 
-        # Pick the oldest one after epoch
         emails.sort(key=lambda e: e["internalDate"])
         return emails[0]
 

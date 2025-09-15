@@ -4,6 +4,7 @@ import json
 
 class OpenAIClient:
     def __init__(self, api_key):
+        # Each thread/process can create its own client safely
         self.client = openai.OpenAI(api_key=api_key)
 
     def chat(
@@ -17,24 +18,21 @@ class OpenAIClient:
         """
         Send chat message to OpenAI and get response.
         If structured_output=True, returns valid JSON.
+        Thread-safe: each thread has its own client instance.
         """
         messages = []
 
-        # Add system message if provided
         if system_message:
             messages.append({"role": "system", "content": system_message})
 
-        # Add user message
         messages.append({"role": "user", "content": user_message})
 
-        # Add assistant message if provided (for context/conversation)
         if assistant_message:
             messages.append({"role": "assistant", "content": assistant_message})
 
-        # Response format
         response_format = {"type": "json_object"} if structured_output else None
 
-        # Call OpenAI API
+        # No lock needed, because this instance is not shared
         response = self.client.chat.completions.create(
             model=model,
             messages=messages,
@@ -43,7 +41,6 @@ class OpenAIClient:
 
         content = response.choices[0].message.content
 
-        # If structured output, parse JSON before returning
         if structured_output:
             try:
                 return json.loads(content)

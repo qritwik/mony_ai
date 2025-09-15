@@ -7,6 +7,7 @@ from workflow.client.postgres_client import PostgresClient
 from datetime import datetime, timedelta
 from dateutil import parser
 from dotenv import load_dotenv
+from workflow.client.logging_client import MonyLogger
 
 load_dotenv()
 
@@ -354,80 +355,65 @@ def identify_transaction_category(user_id, transaction_detail):
             chat_id=telegram_chat_id,
         )
         if category_selection:
-            print("Received category from user's telegram!")
             transaction_category = category_selection["value"]
         else:
-            print("Not received category from user's telegram!")
             transaction_category = identify_category_using_llm(
                 transaction_detail, user_transaction_categories
             )
     else:
-        print("User Telegram not Connected!")
         transaction_category = identify_category_using_llm(
             transaction_detail, user_transaction_categories
         )
 
-    print(f"Transaction category is: {transaction_category}")
     return transaction_category
 
 
-def run_workflow(user_id: int):
+def run_workflow(user_id, logger):
     run_start_time = datetime.now()
     run_status = "failure"
     error_message = ""
 
     try:
-        # Step 1: Fetch latest Gmail
+        logger.info("Starting workflow run")
+
+        # Step 1: Fetch Gmail
         user_last_read_epoch = get_user_last_email_epoch(user_id=user_id)
+        logger.info(f"Last read Gmail epoch: {user_last_read_epoch}")
 
-        # Used for testing
-        # user_query = f"in:inbox category:primary from:alerts@hdfcbank.net"
-
-        user_query = f"in:inbox category:primary"
-        email_data = read_gmail(epoch_time=user_last_read_epoch, query=user_query)
+        email_data = read_gmail(
+            epoch_time=user_last_read_epoch, query="in:inbox category:primary"
+        )
         if not email_data:
-            print("No unread emails found.")
+            logger.info("No unread emails found")
             return "success", "", run_start_time, datetime.now(), {}, {}
 
-        # Step 2: Check if message already processed
-        if is_message_already_processed(
-            user_id=user_id, message_id=email_data["message_id"]
-        ):
-            print(
-                f"Email {email_data['message_id']} already processed successfully. Skipping..."
+        # Step 2: Duplicate check
+        if is_message_already_processed(user_id, email_data["message_id"]):
+            logger.info(
+                f"Email {email_data['message_id']} already processed, skipping."
             )
-            run_status = "success"
-            return (
-                run_status,
-                error_message,
-                run_start_time,
-                datetime.now(),
-                email_data,
-                {},
-            )
+            return "success", "", run_start_time, datetime.now(), email_data, {}
 
-        # Step 3: Classify finance email & extract details
+        # Step 3: Finance check
+        logger.info(f"Processing email subject: {email_data['subject']}")
         transaction_info = check_finance_email(gmail_data=email_data)
-        print(f"Email subject: {email_data['subject']}")
 
         if not transaction_info["is_finance_email"]:
-            print("Not a finance email")
-            run_status = "success"
+            logger.info("Not a finance email, skipping.")
             return (
-                run_status,
-                error_message,
+                "success",
+                "",
                 run_start_time,
                 datetime.now(),
                 email_data,
                 transaction_info,
             )
 
-        # Step 4: Identify transaction category
-        transaction_category = identify_transaction_category(
-            user_id=user_id, transaction_detail=transaction_info
-        )
+        # Step 4: Category identification
+        transaction_category = identify_transaction_category(user_id, transaction_info)
+        logger.info(f"Transaction categorized as: {transaction_category}")
 
-        # Step 5: Insert into user transactions table
+        # Step 5: DB insert
         user_transaction = {
             "user_id": user_id,
             "transaction_type": transaction_info["transaction_type"],
@@ -438,13 +424,13 @@ def run_workflow(user_id: int):
             "transaction_time": transaction_info["transaction_time"],
             "transaction_category": transaction_category,
         }
-        transaction_pk = insert_user_transaction_to_db(data=user_transaction)
-        transaction_info["transaction_pk"] = transaction_pk
+        transaction_pk = insert_user_transaction_to_db(user_transaction)
+        logger.info(f"Transaction saved with PK={transaction_pk}")
 
-        run_status = "success"
+        transaction_info["transaction_pk"] = transaction_pk
         return (
-            run_status,
-            error_message,
+            "success",
+            "",
             run_start_time,
             datetime.now(),
             email_data,
@@ -452,11 +438,10 @@ def run_workflow(user_id: int):
         )
 
     except Exception as e:
-        run_status = "failure"
-        error_message = str(e)
+        logger.error(f"Workflow failed: {e}")
         return (
-            run_status,
-            error_message,
+            "failure",
+            str(e),
             run_start_time,
             datetime.now(),
             locals().get("email_data", {}),
@@ -472,6 +457,7 @@ def run_user_workflow(user_id: int):
       - Log workflow run
       - Return a clean response dict
     """
+    logger = MonyLogger(user_id)
 
     (
         run_status,
@@ -480,7 +466,7 @@ def run_user_workflow(user_id: int):
         run_end_time,
         email_data,
         transaction_info,
-    ) = run_workflow(user_id=user_id)
+    ) = run_workflow(user_id, logger)
 
     # Only log if transaction_info is not empty
     if transaction_info:
@@ -497,6 +483,9 @@ def run_user_workflow(user_id: int):
                 "run_status": run_status,
                 "error_message": error_message,
             }
+        )
+        logger.info(
+            f"Email message id: {email_data.get('message_id')} logged to workflow run"
         )
 
     clean_email_data = dict(email_data or {})

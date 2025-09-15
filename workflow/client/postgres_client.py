@@ -184,7 +184,6 @@ class PostgresClient:
                 self.cur.close()
             if hasattr(self, "conn") and self.conn:
                 self.conn.close()
-            print("✅ Database connection closed")
 
             # Reset singleton state
             PostgresClient._initialized = False
