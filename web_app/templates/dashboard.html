@@ -17,6 +17,12 @@
             transform: translateY(-2px) scale(1.01);
             box-shadow: 0 18px 20px -5px rgba(50, 50, 93, 0.06), 0 8px 8px -5px rgba(0, 0, 0, 0.03);
         }
+        .telegram-connected {
+            background: linear-gradient(135deg, #0088cc 0%, #229ED9 100%);
+        }
+        .telegram-disconnected {
+            background: linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%);
+        }
     </style>
 </head>
 <body class="min-h-screen bg-gray-50 antialiased">
@@ -24,9 +30,30 @@
     <header class="bg-white border-b border-gray-100">
         <div class="max-w-4xl mx-auto px-4 flex justify-between items-center h-16">
             <h1 class="text-2xl font-extrabold gradient-bg bg-clip-text text-transparent">Mony AI</h1>
-            <a href="/logout" class="flex items-center px-4 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors rounded-lg">
-                <i data-lucide="log-out" class="w-4 h-4 mr-2"></i> Logout
-            </a>
+
+            <!-- Right side of navbar -->
+            <div class="flex items-center gap-4">
+                <!-- Telegram Status -->
+                <div class="flex items-center gap-2">
+                    {% if telegram_data %}
+                    <div class="flex items-center gap-2 telegram-connected px-3 py-1.5 rounded-full text-white text-xs font-medium">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        <span class="hidden sm:inline">Telegram Connected</span>
+                        <span class="sm:hidden">Connected</span>
+                    </div>
+                    {% else %}
+                    <div class="flex items-center gap-2 telegram-disconnected px-3 py-1.5 rounded-full text-white text-xs font-medium">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        <span class="hidden sm:inline">Telegram Not Connected</span>
+                        <span class="sm:hidden">Not Connected</span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <a href="/logout" class="flex items-center px-4 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors rounded-lg">
+                    <i data-lucide="log-out" class="w-4 h-4 mr-2"></i> Logout
+                </a>
+            </div>
         </div>
     </header>
 
@@ -105,6 +132,108 @@
                 </form>
             </div>
         </div>
+
+        <!-- Transactions Section -->
+        {% if user_transactions %}
+        <div class="bg-white rounded-2xl card-hover border border-gray-100 shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center">
+                            <i data-lucide="credit-card" class="w-5 h-5 text-green-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+                            <p class="text-sm text-gray-500">{{ user_transactions|length }} transactions tracked</p>
+                        </div>
+                    </div>
+                    <i data-lucide="trending-up" class="w-5 h-5 text-gray-400"></i>
+                </div>
+            </div>
+
+            <!-- Desktop Table View -->
+            <div class="hidden md:block overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Counterparty</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for transaction in user_transactions %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    {% if transaction.transaction_type == 'debit' %}
+                                    <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                                        <i data-lucide="arrow-down" class="w-4 h-4 text-red-600"></i>
+                                    </div>
+                                    <span class="text-sm font-medium text-red-600">Debit</span>
+                                    {% else %}
+                                    <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                                        <i data-lucide="arrow-up" class="w-4 h-4 text-green-600"></i>
+                                    </div>
+                                    <span class="text-sm font-medium text-green-600">Credit</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-semibold text-gray-900">₹{{ transaction.amount }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900 max-w-32 truncate" title="{{ transaction.counterparty }}">{{ transaction.counterparty }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    {{ transaction.transaction_category }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900">{{ transaction.transaction_date }}</div>
+                                <div class="text-xs text-gray-500">{{ transaction.transaction_time }}</div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile Card View -->
+            <div class="md:hidden divide-y divide-gray-200">
+                {% for transaction in user_transactions %}
+                <div class="p-4 hover:bg-gray-50 transition-colors">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center">
+                            {% if transaction.transaction_type == 'debit' %}
+                            <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                                <i data-lucide="arrow-down" class="w-4 h-4 text-red-600"></i>
+                            </div>
+                            {% else %}
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                                <i data-lucide="arrow-up" class="w-4 h-4 text-green-600"></i>
+                            </div>
+                            {% endif %}
+                            <div class="text-sm font-semibold text-gray-900">₹{{ transaction.amount }}</div>
+                        </div>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {{ transaction.transaction_category }}
+                        </span>
+                    </div>
+                    <div class="text-sm text-gray-600 mb-1 truncate">{{ transaction.counterparty }}</div>
+                    <div class="flex justify-between items-center text-xs text-gray-500">
+                        <span>{{ transaction.transaction_date }}</span>
+                        <span>{{ transaction.transaction_time }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         {% else %}
         <!-- Not Connected State -->
         <div class="bg-white rounded-2xl card-hover border border-gray-100 shadow-sm p-8 flex flex-col items-center text-center space-y-4">
